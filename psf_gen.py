@@ -27,6 +27,7 @@ pixel_size_meters = 1e-6
 psf_width_meters = psf_width_pixels * pixel_size_meters
 numerical_aperture = 0.6
 
+## this part defines the "blur" of the beads at different Z sections, it is used in mask optimizatin part 
 def get_airy_psf(psf_width_pixels, psf_width_meters, z, wavelength, numerical_aperture, refractive_index, normalize=True):
     """
     psf_width_pixels: Integer, the width of the psf, in pixels. Must be odd. If this is even, testGetAiryPsfGoldenZeroDepth() will fail.
