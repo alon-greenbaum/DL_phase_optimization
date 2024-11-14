@@ -43,6 +43,8 @@ numerical_aperture = 0.6
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+# AG this part is generating the images of the defocused images at different planes 
+# the code will save these images as template for future use
 def beads_img():
     data_path = "beads_img_defocus/"
     bead_ori_img = np.zeros((101,101))
