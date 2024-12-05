@@ -2,21 +2,9 @@
 import os
 import time
 import numpy as np
-# import scipy.integrate
-# import scipy.signal
-# import scipy.special
 import skimage.io
 import random
 from datetime import datetime
-# from skimage import filters
-# from skimage.transform import rescale, resize
-# from scipy.io import savemat
-# import scipy.io as sio
-#import cv2
-# from PIL import Image
-# import matplotlib.pyplot as plt
-# from scipy import interpolate
-
 
 import torch
 import torch.nn as nn
@@ -31,29 +19,29 @@ from loss_utils import KDE_loss3D, jaccard_coeff
 from beam_profile_gen import phase_gen
 import scipy.io as sio
 
+# Define the parameters 
 N = 500 # grid size
-px = 1e-6 # pixel size (um)
-focal_length = 2e-3
-wavelength = 0.561e-6
-refractive_index = 1.0
-psf_width_pixels = 101
-pixel_size_meters = 1e-6
-psf_width_meters = psf_width_pixels * pixel_size_meters
-numerical_aperture = 0.6
+px = 1e-6 # pixel size [m]
+focal_length = 2e-3 #[m] equivalent to 2 mm away from the lens
+wavelength = 0.561e-6 # [m]
+refractive_index = 1.0 # We assume propagation is in air
+psf_width_pixels = 101 # How big will be the psf image
+psf_width_meters = psf_width_pixels * px
+numerical_aperture = 0.6 #Relates to the resolution of the detection objective 
+bead_radius = 1 #pixels
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # AG this part is generating the images of the defocused images at different planes 
 # the code will save these images as template for future use
-def beads_img():
-    data_path = "beads_img_defocus/"
-    bead_ori_img = np.zeros((101,101))
-    setup_defocus_psf = sio.loadmat('psf_z.mat')['psf']
-    bead_radius = 1 # in um
-    ori_intensity = 20000
-    for x in range(50-bead_radius,50+bead_radius+1):
-        for y in range(50-bead_radius,50+bead_radius+1):
-            if (x - 50)**2 + (y - 50)**2 <= bead_radius**2:
+def beads_img(psf_width_pixels, bead_radius ):
+    data_path = "beads_img_defocus/" #Should we define it ?
+    bead_ori_img = np.zeros((psf_width_pixels,psf_width_pixels))  
+    setup_defocus_psf = sio.loadmat('psf_z.mat')['psf'] #this is a matrix that Chen has generated before
+    ori_intensity = 20000 #seems like a random number 
+    for x in range(math.floor(psf_width_pixels/2)-bead_radius, math.floor(psf_width_pixels/2)+bead_radius+1):
+        for y in range(math.floor(psf_width_pixels/2)-bead_radius, math.floor(psf_width_pixels/2)+bead_radius+1):
+            if (x - math.floor(psf_width_pixels/2))**2 + (y - math.floor(psf_width_pixels/2))**2 <= bead_radius**2:
                 bead_ori_img[x,y] = ori_intensity
     bead_ori_img = skimage.filters.gaussian(bead_ori_img, sigma=1)
     #skimage.io.imshow(bead_ori_img)
