@@ -77,20 +77,14 @@ def learn_mask():
 
     #mask_real = torch.from_numpy(mask_init).type(torch.FloatTensor).to(device)
     mask_phase = np.zeros((mask_phase_pixels,mask_phase_pixels))
-    mask_phase = phase_gen()
+    #in its current version it will return zeros 
+    #mask_phase = phase_gen()
     mask_phase = torch.from_numpy(mask_phase).type(torch.FloatTensor).to(device)
     #mask_param = mask_real + 1j*mask_phase
     
     mask_param = nn.Parameter(mask_phase)
-    
-    
-    # mask_real = nn.Parameter(torch.from_numpy(mask_init).type(torch.FloatTensor).to(device))
-    # mask_phase = np.zeros((500,500))
-    # mask_phase = nn.Parameter(torch.from_numpy(mask_phase).type(torch.FloatTensor).to(device))
-    # mask_param = mask_real + 1j*mask_phase
     mask_param.requires_grad_()
-    # phase term for PSF visualization
-    # ...
+    
     path_save = 'data_mask_learning/'
     path_train = 'traininglocations/'
     if not (os.path.isdir(path_save)):
