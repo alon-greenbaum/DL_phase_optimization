@@ -43,8 +43,11 @@ def beads_img(psf_width_pixels, bead_radius ):
         for y in range(math.floor(psf_width_pixels/2)-bead_radius, math.floor(psf_width_pixels/2)+bead_radius+1):
             if (x - math.floor(psf_width_pixels/2))**2 + (y - math.floor(psf_width_pixels/2))**2 <= bead_radius**2:
                 bead_ori_img[x,y] = ori_intensity
+    #AG I assume that it smooth every bead 
     bead_ori_img = skimage.filters.gaussian(bead_ori_img, sigma=1)
-    #skimage.io.imshow(bead_ori_img)
+
+    #Create the images that have the PSF, based on distance from the detection lens focal point
+    #Instead of 41 maybe, the bead volume thickness/NA/lambda^2
     for i in range(41):
         blurred_img = apply_blur_kernel(bead_ori_img, setup_defocus_psf[i])
         skimage.io.imsave(data_path + 'z' + str(i).zfill(2) + '.tiff', blurred_img.astype('uint16'))
