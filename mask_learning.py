@@ -47,7 +47,7 @@ def beads_img(psf_width_pixels, bead_radius ):
     bead_ori_img = skimage.filters.gaussian(bead_ori_img, sigma=1)
 
     #Create the images that have the PSF, based on distance from the detection lens focal point
-    #Instead of 41 maybe, the bead volume thickness/NA/lambda^2
+    #41 refers to 41 um maximum defocus in the simulation; the volume was 200x200x30um^3, 30 um in Z so max 15 um defocus
     for i in range(41):
         blurred_img = apply_blur_kernel(bead_ori_img, setup_defocus_psf[i])
         skimage.io.imsave(data_path + 'z' + str(i).zfill(2) + '.tiff', blurred_img.astype('uint16'))
@@ -65,7 +65,6 @@ def learn_mask():
     # train on GPU if available
     #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
-    #setup_defocus_psf = sio.loadmat('psf_z.mat')['psf']
     
     # initial learning rate
     initial_learning_rate = 0.01
@@ -74,21 +73,10 @@ def learn_mask():
     max_epochs = 200
     ntrain = 10000
     nvalid = 1000
-    
-    # initialize phase mask
-    # x = list(range(-N//2,N//2))
-    # y = list(range(-N//2,N//2))
-    # [X, Y] = np.meshgrid(x,y)
-    # X = X*px
-    # Y = Y*px
-    # c = 0.02
-    # mask_init = np.exp(-np.sqrt(np.square(X) + np.square(Y))/(2*c**2))
-    # set_2 = mask_init <= 0.75
-    # mask_init[set_2] = 0
-    # #mask_init = np.zeros((500,500))
-    
+    mask_phase_pixels = 500
+
     #mask_real = torch.from_numpy(mask_init).type(torch.FloatTensor).to(device)
-    mask_phase = np.zeros((500,500))
+    mask_phase = np.zeros((mask_phase_pixels,mask_phase_pixels))
     mask_phase = phase_gen()
     mask_phase = torch.from_numpy(mask_phase).type(torch.FloatTensor).to(device)
     #mask_param = mask_real + 1j*mask_phase
