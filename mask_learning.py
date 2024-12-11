@@ -30,7 +30,8 @@ psf_width_meters = psf_width_pixels * px
 numerical_aperture = 0.6 #Relates to the resolution of the detection objective 
 bead_radius = 1 #pixels
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 # AG this part is generating the images of the defocused images at different planes 
 # the code will save these images as template for future use

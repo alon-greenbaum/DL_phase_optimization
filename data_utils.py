@@ -33,35 +33,29 @@ def complex_to_tensor(phases_np):
     return phases_torch
 
 # Define a batch data generator for training and testing
-def generate_batch(batch_size, seed=None):
+def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, particle_spatial_range_z, seed=None):
     
     # if we're testing then seed the random generator
     if seed is not None:
         np.random.seed(seed)
         
     # upper and lower limits for the number fo emitters
-    num_particles_range = [450, 550]
     num_particles = np.random.randint(num_particles_range[0], num_particles_range[1], 1).item()
 
     # range of signal counts assuming a uniform distribution
-    nsig_unif_range = [10000, 10001]  # in [counts]
-    Nsig_range = nsig_unif_range
+    # not sure what Chen wanted to achieve but it is uniform
+    Nsig_range = [10000, 10001]  # in [counts]
     Nphotons = np.random.randint(Nsig_range[0], Nsig_range[1], (batch_size, num_particles))
     Nphotons = Nphotons.astype('float32')
     
     xyz_grid = np.zeros((batch_size,num_particles,3)).astype('int')
     for k in range(batch_size):
         
-        xyz_grid[k,:,0] = random.choices(range(15,185),k = num_particles) # in pixel
-        xyz_grid[k,:,1] = random.choices(range(15,185),k = num_particles) # in pixel
-        xyz_grid[k,:,2] = random.choices(range(-10,11,1),k = num_particles) # in pixel
-    
-        
-    xyz = np.zeros((batch_size,num_particles,3))
-    xyz[:,:,0] = xyz_grid[:,:,0]
-    xyz[:,:,1] = xyz_grid[:,:,1]
-    xyz[:,:,2] = xyz_grid[:,:,2]
-    return xyz, Nphotons
+        xyz_grid[k,:,0] = random.choices(particle_spatial_range_xy,k = num_particles) # in pixel
+        xyz_grid[k,:,1] = random.choices(particle_spatial_range_xy,k = num_particles) # in pixel
+        xyz_grid[k,:,2] = random.choices(particle_spatial_range_z,k = num_particles) # in pixel
+
+    return xyz_grid, Nphotons
     
 
 
@@ -70,8 +64,7 @@ def generate_batch(batch_size, seed=None):
 # =====================================
 # converts continuous xyz locations to a boolean grid
 def batch_xyz_to_boolean_grid(xyz_np):
-    
-    
+
     # number of particles
     batch_size, num_particles = xyz_np[:,:,2].shape
     # set dimension
