@@ -19,37 +19,30 @@ from loss_utils import KDE_loss3D, jaccard_coeff
 from beam_profile_gen import phase_gen
 import scipy.io as sio
 
-# Define the parameters 
-N = 500 # grid size
-px = 1e-6 # pixel size [m]
-focal_length = 2e-3 #[m] equivalent to 2 mm away from the lens
-wavelength = 0.561e-6 # [m]
-refractive_index = 1.0 # We assume propagation is in air
-psf_width_pixels = 101 # How big will be the psf image
-psf_width_meters = psf_width_pixels * px
-numerical_aperture = 0.6 #Relates to the resolution of the detection objective 
-bead_radius = 1 #pixels
-
-#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu")
 
 # AG this part is generating the images of the defocused images at different planes 
 # the code will save these images as template for future use
-def beads_img(psf_width_pixels, bead_radius ):
-    data_path = "beads_img_defocus/" #Should we define it ?
+def beads_img(config):
+    #Unpack the parameters
+    psf_width_pixels = config['psf_width_pixels']
+    data_path = config['data_path']
+    bead_radius = config['bead_radius']
     bead_ori_img = np.zeros((psf_width_pixels,psf_width_pixels))  
     setup_defocus_psf = sio.loadmat('psf_z.mat')['psf'] #this is a matrix that Chen has generated before
-    ori_intensity = 20000 #seems like a random number 
+    ori_intensity = config['ori_intensity']
+    max_defocus = config['max_defocus']
+
+    #generate the bead in the center based on the bead size in pixels
     for x in range(math.floor(psf_width_pixels/2)-bead_radius, math.floor(psf_width_pixels/2)+bead_radius+1):
         for y in range(math.floor(psf_width_pixels/2)-bead_radius, math.floor(psf_width_pixels/2)+bead_radius+1):
             if (x - math.floor(psf_width_pixels/2))**2 + (y - math.floor(psf_width_pixels/2))**2 <= bead_radius**2:
                 bead_ori_img[x,y] = ori_intensity
-    #AG I assume that it smooth every bead 
+    #Smooth every bead
     bead_ori_img = skimage.filters.gaussian(bead_ori_img, sigma=1)
 
     #Create the images that have the PSF, based on distance from the detection lens focal point
     #41 refers to 41 um maximum defocus in the simulation; the volume was 200x200x30um^3, 30 um in Z so max 15 um defocus
-    for i in range(41):
+    for i in range(max_defocus):
         blurred_img = apply_blur_kernel(bead_ori_img, setup_defocus_psf[i])
         skimage.io.imsave(data_path + 'z' + str(i).zfill(2) + '.tiff', blurred_img.astype('uint16'))
     return None
@@ -58,36 +51,38 @@ def makedirs(path):
     if not os.path.exists(path):
         os.makedirs(path)
         
-def learn_mask():
-    # set random number generators for repeatability
-    torch.manual_seed(99)
-    np.random.seed(99)
+def learn_mask(config):
+
+    #Unpack parameters
+    ntrain = config['ntrain']
+    nvalid = config['nvalid']
+    batch_size_gen = config['batch_size_gen']
+    random_seed = config['random_seed']
+    initial_learning_rate = config['initial_learning_rate']
+    batch_size = config['batch_size']
+    max_epochs = config['max_epochs']
+    mask_phase_pixels = config['mask_phase_pixels']
+    psf_width_meters = config['psf_width_pixels'] * config['px']
+    path_save = config['path_save']
+    path_train = config['path_train']
+    learning_rate_scheduler_factor = config['learning_rate_scheduler_factor']
+    learning_rate_scheduler_patience = config['learning_rate_scheduler_patience']
+    learning_rate_scheduler_patience_min_lr = config['learning_rate_scheduler_patience_min_lr']
+
+    #Set the random seed
+    torch.manual_seed(random_seed)
+    np.random.seed(random_seed)
     
     # train on GPU if available
-    #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
-    
-    # initial learning rate
-    initial_learning_rate = 0.01
-    # 1 for mask learning, examples are generated 16 at a time)
-    batch_size = 1
-    max_epochs = 200
-    ntrain = 10000
-    nvalid = 1000
-    mask_phase_pixels = 500
 
-    #mask_real = torch.from_numpy(mask_init).type(torch.FloatTensor).to(device)
+    #Set the mask_phase as the parameter to derive
     mask_phase = np.zeros((mask_phase_pixels,mask_phase_pixels))
-    #in its current version it will return zeros 
-    #mask_phase = phase_gen()
     mask_phase = torch.from_numpy(mask_phase).type(torch.FloatTensor).to(device)
-    #mask_param = mask_real + 1j*mask_phase
-    
     mask_param = nn.Parameter(mask_phase)
     mask_param.requires_grad_()
-    
-    path_save = 'data_mask_learning/'
-    path_train = 'traininglocations/'
+
     if not (os.path.isdir(path_save)):
         os.mkdir(path_save)
     
@@ -96,18 +91,18 @@ def learn_mask():
     res_dir = os.path.join('./results', model_name)
     makedirs(res_dir)
     
-    # load all locations pickle file
+    # load all locations pickle file, to generate the labels go to Generate data folder
     path_pickle = path_train + 'labels.pickle'
     with open(path_pickle, 'rb') as handle:
         labels = pickle.load(handle)
     
     # parameters for data loaders batch size is 1 because examples are generated 16 at a time
-    params_train = {'batch_size': 1, 'shuffle': True}
-    params_valid = {'batch_size': 1, 'shuffle': False}
-    batch_size_gen = 2
+    params_train = {'batch_size': batch_size, 'shuffle': True}
+    params_valid = {'batch_size': batch_size, 'shuffle': False}
     ntrain_batches = int(ntrain/batch_size_gen)
     nvalid_batches = int(nvalid/batch_size_gen)
     steps_per_epoch = ntrain_batches
+
     # partition built in simulation
     ind_all = np.arange(0, ntrain_batches + nvalid_batches, 1)
     list_all = ind_all.tolist()
@@ -129,21 +124,17 @@ def learn_mask():
     
     cnn = OpticsDesignCNN()
     cnn.to(device)
-    
-    # gap between validation and training loss
-    gap_thresh = 1e-4
-    
+
     # adam optimizer
     optimizer = Adam(list(cnn.parameters()) + [mask_param], lr=initial_learning_rate)
-    # learning rate scheduler
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True, min_lr=1e-6)
+    # learning rate scheduler for now
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=learning_rate_scheduler_factor,\
+    patience=learning_rate_scheduler_patience, verbose=True, min_lr=learning_rate_scheduler_patience_min_lr)
     
-    # loss function 
-    # wait to design
+    # loss function
     #criterion = KDE_loss3D(100.0)
     criterion = nn.BCEWithLogitsLoss().to(device)
     # Model layers and number of parameters
-    #print(cnn)
     print("number of parameters: ", sum(param.numel() for param in cnn.parameters()))
     # start from scratch
     start_epoch, end_epoch, num_epochs = 0, max_epochs, max_epochs
@@ -220,8 +211,44 @@ def learn_mask():
 if __name__ == '__main__':
     # pre generate defocus beads
     # beads_img()
-    
-    a = learn_mask()
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    config = {
+        "ntrain": 10000,
+        "nvalid": 1000,
+        "batch_size_gen": 2,
+        # Number of emitters per image
+        "num_particles_range": [450, 550],
+        "particle_spatial_range_xy": range(15, 185),
+        # um, to avoid edges of the image so 15 um away
+        "particle_spatial_range_z": range(-10, 11, 1),  # um
+         # Define the parameters
+        "N": 500,  # grid size,
+        "px": 1e-6,  # pixel size [m]
+        "focal_length": 2e-3,  # [m] equivalent to 2 mm away from the lens
+        "wavelength": 0.561e-6,  # [m]
+        "refractive_index":  1.0,  # We assume propagation is in air
+        "psf_width_pixels": 101,  # How big will be the psf image
+        "numerical_aperture": 0.6,  # Relates to the resolution of the detection objective
+        "bead_radius": 1.0,  # pixels
+        "random_seed": 99,
+        "initial_learning_rate": 0.01,
+        "batch_size": 1,
+        "max_epochs": 200,
+        "mask_phase_pixels": 500,
+        "data_path": "beads_img_defocus/",
+        "path_save":"data_mask_learning/",
+        "path_train":"traininglocations/",
+        "ori_intensity": 20000, #arbitrary units
+        "max_defocus": 41, #um for generating the PSFs
+        "learning_rate_scheduler_factor": 0.1,
+        "learning_rate_scheduler_patience": 5,
+        "learning_rate_scheduler_patience_min_lr": 1e-6
+        }
+
+
+    learn_mask(config)
     
     
     

@@ -19,9 +19,6 @@ def gen_data(config):
     particle_spatial_range_z = config['particle_spatial_range_z']
     num_particles_range =config['num_particles_range']
 
-
-
-
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     #device = torch.device("cpu")
     torch.backends.cudnn.benchmark = True
