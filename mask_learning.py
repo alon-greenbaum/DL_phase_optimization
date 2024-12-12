@@ -5,7 +5,7 @@ import numpy as np
 import skimage.io
 import random
 from datetime import datetime
-
+import math
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -13,12 +13,63 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import pickle
 from psf_gen import apply_blur_kernel
-from data_utils import PhasesOnlineDataset, savePhaseMask
+from data_utils import PhasesOnlineDataset, savePhaseMask, generate_batch
 from cnn_utils import OpticsDesignCNN
 from loss_utils import KDE_loss3D, jaccard_coeff
 from beam_profile_gen import phase_gen
 import scipy.io as sio
 
+#This part generates the beads location for the training and validation sets
+def gen_data(config):
+    ntrain = config['ntrain']
+    nvalid = config['nvalid']
+    batch_size_gen = config['batch_size_gen']
+    particle_spatial_range_xy = config['particle_spatial_range_xy']
+    particle_spatial_range_z = config['particle_spatial_range_z']
+    num_particles_range = config['num_particles_range']
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cpu")
+    torch.backends.cudnn.benchmark = True
+
+    # set random seed for repeatability
+    torch.manual_seed(99)
+    np.random.seed(50)
+
+    path_train = 'traininglocations/'
+    if not (os.path.isdir(path_train)):
+        os.mkdir(path_train)
+
+    # print status
+    print('=' * 50)
+    print('Sampling examples for training')
+    print('=' * 50)
+
+    # locations for phase mask learning are saved in batches of 16 for convenience
+
+    # calculate the number of training batches to sample
+    ntrain_batches = int(ntrain / batch_size_gen)
+
+    # generate examples for training
+    labels_dict = {}
+    for i in range(ntrain_batches):
+        # sample a training example
+        xyz, Nphotons = generate_batch(batch_size_gen, num_particles_range, particle_spatial_range_xy,
+                                       particle_spatial_range_z)
+        labels_dict[str(i)] = {'xyz': xyz, 'N': Nphotons}
+        # print number of example
+        print('Training Example [%d / %d]' % (i + 1, ntrain_batches))
+
+    nvalid_batches = int(nvalid / batch_size_gen)
+    for i in range(nvalid_batches):
+        xyz, Nphotons = generate_batch(batch_size_gen, num_particles_range, particle_spatial_range_xy,
+                                       particle_spatial_range_z)
+        labels_dict[str(i + ntrain_batches)] = {'xyz': xyz, 'N': Nphotons}
+        print('Validation Example [%d / %d]' % (i + 1, nvalid_batches))
+
+    path_labels = path_train + 'labels.pickle'
+    with open(path_labels, 'wb') as handle:
+        pickle.dump(labels_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 # AG this part is generating the images of the defocused images at different planes 
 # the code will save these images as template for future use
@@ -33,8 +84,8 @@ def beads_img(config):
     max_defocus = config['max_defocus']
 
     #generate the bead in the center based on the bead size in pixels
-    for x in range(math.floor(psf_width_pixels/2)-bead_radius, math.floor(psf_width_pixels/2)+bead_radius+1):
-        for y in range(math.floor(psf_width_pixels/2)-bead_radius, math.floor(psf_width_pixels/2)+bead_radius+1):
+    for x in range(int(math.floor(psf_width_pixels/2)-bead_radius), int(math.floor(psf_width_pixels/2)+bead_radius+1)):
+        for y in range(int(math.floor(psf_width_pixels/2)-bead_radius), int(math.floor(psf_width_pixels/2)+bead_radius+1)):
             if (x - math.floor(psf_width_pixels/2))**2 + (y - math.floor(psf_width_pixels/2))**2 <= bead_radius**2:
                 bead_ori_img[x,y] = ori_intensity
     #Smooth every bead
@@ -209,12 +260,11 @@ def learn_mask(config):
     return labels
 
 if __name__ == '__main__':
-    # pre generate defocus beads
-    # beads_img()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     config = {
+        #How many bead cases per epoch
         "ntrain": 10000,
         "nvalid": 1000,
         "batch_size_gen": 2,
@@ -231,7 +281,7 @@ if __name__ == '__main__':
         "refractive_index":  1.0,  # We assume propagation is in air
         "psf_width_pixels": 101,  # How big will be the psf image
         "numerical_aperture": 0.6,  # Relates to the resolution of the detection objective
-        "bead_radius": 1.0,  # pixels
+        "bead_radius": 5.0,  # pixels
         "random_seed": 99,
         "initial_learning_rate": 0.01,
         "batch_size": 1,
@@ -247,7 +297,11 @@ if __name__ == '__main__':
         "learning_rate_scheduler_patience_min_lr": 1e-6
         }
 
-
+    #Generate the data for the training
+    gen_data(config)
+    # pre generate defocus beads
+    beads_img(config)
+    #learn the mask
     learn_mask(config)
     
     
