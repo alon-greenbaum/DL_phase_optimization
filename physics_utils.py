@@ -232,7 +232,7 @@ class PhysicalLayer(nn.Module):
         #Cut the PSF images at different planes
         for z in range(0, max_defocus):
             img = skimage.io.imread('beads_img_defocus/z' + str(z).zfill(2) + '.tiff')
-            range_crop_psf = range(-(psf_width_pixels - 1)//2 - psf_edge_remove,(psf_width_pixels - 1)//2 + psf_edge_remove+1)
+            range_crop_psf = range(-psf_keep_radius,psf_keep_radius+1)
             self.imgs.append(img[range_crop_psf, range_crop_psf])
 
 
@@ -242,7 +242,7 @@ class PhysicalLayer(nn.Module):
         self.noise = NoiseLayer(device)
         self.norm01 = Normalize01()
 
-    def forward(self, mask_param, xyz):
+    def forward(self, mask_param, xyz, Nphotons):
 
         Nbatch, Nemitters = xyz.shape[0], xyz.shape[1]
         mask_param = self.mask_real * torch.exp(1j * mask_param)
@@ -253,11 +253,11 @@ class PhysicalLayer(nn.Module):
         # AG - Need to check if the FFT will be faster if padded to 1024
         # pad_to_power_2 = NextPowerOfTwo(B1.shape[0])-B1.shape[0]
         pad_to_power_2 = 500
-        E1 = F.pad(B1, (pad_to_power_2/2, pad_to_power_2/2, pad_to_power_2/2, pad_to_power_2/2), 'constant', 0)
+        E1 = F.pad(B1, (pad_to_power_2//2, pad_to_power_2//2, pad_to_power_2//2, pad_to_power_2//2), 'constant', 0)
         # Goodman book equation 4-14, convolution method - lens kernel (Q1) and the image after mask and lens function (E2)
         E2 = torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fft2(E1) * torch.fft.fft2(self.Q1)))
 
-        output_layer = E2[:, :, N // 2:3 * N // 2, N // 2:3 * N // 2]
+        output_layer = E2[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
 
         imgs3D = torch.zeros(Nbatch, 1, self.image_volume_um[0], self.image_volume_um[0]).type(torch.FloatTensor).to(self.device)
 
@@ -281,7 +281,7 @@ class PhysicalLayer(nn.Module):
                 U1 = torch.real(U1 * torch.conj(U1))
 
                 #Here we assume that the beam is being dithered up and down
-                intensity = torch.sum(U1[0, 0, :, ((self.N*self.px*1e6)//2-1) + z])
+                intensity = torch.sum(U1[0, 0, :, int(((self.N*self.px*1e6)//2-1) + z)])
                 imgs3D[i, 0, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1,\
                 y - self.psf_keep_radius: y + self.psf_keep_radius + 1] += torch.from_numpy(
                     self.imgs[abs(z.item())].astype('float32')).type(torch.FloatTensor).to(self.device) * intensity
