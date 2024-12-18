@@ -50,9 +50,9 @@ class Conv2DLeakyReLUBN(nn.Module):
 
 # Phase mask learning architecture
 class OpticsDesignCNN(nn.Module):
-    def __init__(self):
+    def __init__(self, config):
         super(OpticsDesignCNN, self).__init__()
-        self.physicalLayer = PhysicalLayer()
+        self.physicalLayer = PhysicalLayer(config)
         self.norm = nn.BatchNorm2d(num_features=1, affine=True)
         self.layer1 = Conv2DLeakyReLUBN(1, 32, 3, 1, 1, 0.1)
         self.layer2 = Conv2DLeakyReLUBN(32 + 1, 32, 3, 1, 1, 0.1)
@@ -68,6 +68,7 @@ class OpticsDesignCNN(nn.Module):
         #self.pred = nn.Hardtanh(min_val=0.0, max_val=scale_factor)
         
         self.maxpool = nn.MaxPool2d(kernel_size=2,stride=2)
+
     def forward(self,mask, xyz, Nphotons):
         im = self.physicalLayer(mask,xyz,Nphotons)
         im = self.norm(im)

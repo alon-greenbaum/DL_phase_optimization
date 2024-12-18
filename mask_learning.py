@@ -27,14 +27,14 @@ def gen_data(config):
     particle_spatial_range_xy = config['particle_spatial_range_xy']
     particle_spatial_range_z = config['particle_spatial_range_z']
     num_particles_range = config['num_particles_range']
+    random_seed = config['random_seed']
+    device = config['device']
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # device = torch.device("cpu")
     torch.backends.cudnn.benchmark = True
 
     # set random seed for repeatability
-    torch.manual_seed(99)
-    np.random.seed(50)
+    torch.manual_seed(random_seed)
+    np.random.seed(random_seed//2 + 1)
 
     path_train = 'traininglocations/'
     if not (os.path.isdir(path_train)):
@@ -119,13 +119,14 @@ def learn_mask(config):
     learning_rate_scheduler_factor = config['learning_rate_scheduler_factor']
     learning_rate_scheduler_patience = config['learning_rate_scheduler_patience']
     learning_rate_scheduler_patience_min_lr = config['learning_rate_scheduler_patience_min_lr']
+    device = config['device']
 
     #Set the random seed
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
     
     # train on GPU if available
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
 
     #Set the mask_phase as the parameter to derive
@@ -173,7 +174,7 @@ def learn_mask(config):
     print('CNN architecture')
     print('=' * 20)
     
-    cnn = OpticsDesignCNN()
+    cnn = OpticsDesignCNN(config)
     cnn.to(device)
 
     # adam optimizer
@@ -265,14 +266,16 @@ if __name__ == '__main__':
 
     config = {
         #How many bead cases per epoch
-        "ntrain": 10000,
-        "nvalid": 1000,
-        "batch_size_gen": 2,
+        "device": device, #Same GPU for all
+        "ntrain": 10, #default 10000
+        "nvalid": 1, #default 1000
+        "batch_size_gen": 2, #default 2
         # Number of emitters per image
-        "num_particles_range": [450, 550],
-        "particle_spatial_range_xy": range(15, 185),
+        "num_particles_range": [4, 8], #with a strong gpu [450, 550]
+        "image_volume": [200, 200, 30], #the volume of imaging each dimension in um
+        "particle_spatial_range_xy": range(15, 185), #dependece on the volume size default 200 um
         # um, to avoid edges of the image so 15 um away
-        "particle_spatial_range_z": range(-10, 11, 1),  # um
+        "particle_spatial_range_z": range(-10, 11, 1),  # um defualt range(-10,11,1)
          # Define the parameters
         "N": 500,  # grid size,
         "px": 1e-6,  # pixel size [m]
@@ -280,8 +283,10 @@ if __name__ == '__main__':
         "wavelength": 0.561e-6,  # [m]
         "refractive_index":  1.0,  # We assume propagation is in air
         "psf_width_pixels": 101,  # How big will be the psf image
+        "psf_edge_remove": 15,
+        "psf_keep_radius":15,
         "numerical_aperture": 0.6,  # Relates to the resolution of the detection objective
-        "bead_radius": 5.0,  # pixels
+        "bead_radius": 1.0,  # pixels
         "random_seed": 99,
         "initial_learning_rate": 0.01,
         "batch_size": 1,
@@ -291,11 +296,13 @@ if __name__ == '__main__':
         "path_save":"data_mask_learning/",
         "path_train":"traininglocations/",
         "ori_intensity": 20000, #arbitrary units
+        "laser_beam_FWHC": 0.0001, #in um, the size of the FWHM of the Gaussian beam
         "max_defocus": 41, #um for generating the PSFs
         "learning_rate_scheduler_factor": 0.1,
         "learning_rate_scheduler_patience": 5,
-        "learning_rate_scheduler_patience_min_lr": 1e-6
-        }
+        "learning_rate_scheduler_patience_min_lr": 1e-6,
+        "max_intensity": 5e4
+    }
 
     #Generate the data for the training
     gen_data(config)
