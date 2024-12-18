@@ -109,7 +109,8 @@ class poisson_noise_approx(nn.Module):
 class NoiseLayer(nn.Module):
     def __init__(self, device):
         super().__init__()
-        self.poiss = poisson_noise_approx(device)
+        self.device = device
+        self.poiss = poisson_noise_approx(self.device)
         self.unif_bg = 100
 
     def forward(self, input):
@@ -288,6 +289,6 @@ class PhysicalLayer(nn.Module):
 
         imgs3D = imgs3D / self.max_intensity
 
-        result_noisy = self.noise(imgs3D, self.device)
+        result_noisy = self.noise(imgs3D)
         result_noisy01 = self.norm01(result_noisy)
         return result_noisy01
