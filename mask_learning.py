@@ -307,7 +307,7 @@ if __name__ == '__main__':
     #Generate the data for the training
     gen_data(config)
     # pre generate defocus beads
-    #beads_img(config)
+    beads_img(config)
     #learn the mask
     learn_mask(config)
     
