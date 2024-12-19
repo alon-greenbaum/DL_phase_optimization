@@ -66,6 +66,7 @@ class OpticsDesignCNN(nn.Module):
         self.layer10 = nn.Conv2d(32, 1, kernel_size=1, dilation=1)
         scale_factor = 100
         #self.pred = nn.Hardtanh(min_val=0.0, max_val=scale_factor)
+        # Although 10 layers were defined only 4 will be used in Forward
         
         self.maxpool = nn.MaxPool2d(kernel_size=2,stride=2)
 

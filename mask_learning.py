@@ -267,8 +267,8 @@ if __name__ == '__main__':
     config = {
         #How many bead cases per epoch
         "device": device, #Same GPU for all
-        "ntrain": 10, #default 10000
-        "nvalid": 1, #default 1000
+        "ntrain": 10000, #default 10000
+        "nvalid": 1000, #default 1000
         "batch_size_gen": 2, #default 2
         # Number of emitters per image
         "num_particles_range": [4, 8], #with a strong gpu [450, 550]
@@ -306,7 +306,7 @@ if __name__ == '__main__':
 
     #Generate the data for the training
     gen_data(config)
-    # pre generate defocus beads
+    # pre generate defocus beads - can only run once
     beads_img(config)
     #learn the mask
     learn_mask(config)

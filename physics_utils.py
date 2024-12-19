@@ -287,8 +287,10 @@ class PhysicalLayer(nn.Module):
                 y - self.psf_keep_radius: y + self.psf_keep_radius + 1] += torch.from_numpy(
                     self.imgs[abs(z.item())].astype('float32')).type(torch.FloatTensor).to(self.device) * intensity
 
+        # need to check the normalization here
         imgs3D = imgs3D / self.max_intensity
 
+        # adds noise and normalize again
         result_noisy = self.noise(imgs3D)
         result_noisy01 = self.norm01(result_noisy)
         return result_noisy01
