@@ -286,7 +286,7 @@ if __name__ == '__main__':
         "psf_edge_remove": 15,
         "psf_keep_radius":15,
         "numerical_aperture": 0.6,  # Relates to the resolution of the detection objective
-        "bead_radius": 1.0,  # pixels
+        "bead_radius": 1.0,  # pixels 1.0 default
         "random_seed": 99,
         "initial_learning_rate": 0.01,
         "batch_size": 1,

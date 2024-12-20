@@ -296,6 +296,12 @@ class PhysicalLayer(nn.Module):
                 y - self.psf_keep_radius: y + self.psf_keep_radius + 1] += torch.from_numpy(
                     self.imgs[abs(z.item())].astype('float32')).type(torch.FloatTensor).to(self.device) * intensity
 
+                # Debug
+                #a = imgs3D[i, 0, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1,\
+                #y - self.psf_keep_radius: y + self.psf_keep_radius + 1]
+                #plt.imshow(a.detach().numpy())
+                #plt.show()
+
         # need to check the normalization here
         imgs3D = imgs3D / self.max_intensity
 
