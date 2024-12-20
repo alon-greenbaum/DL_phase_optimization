@@ -271,7 +271,7 @@ if __name__ == '__main__':
         "nvalid": 1000, #default 1000
         "batch_size_gen": 2, #default 2
         # Number of emitters per image
-        "num_particles_range": [4, 8], #with a strong gpu [450, 550]
+        "num_particles_range": [20, 30], #with a strong gpu [450, 550]
         "image_volume": [200, 200, 30], #the volume of imaging each dimension in um
         "particle_spatial_range_xy": range(15, 185), #dependece on the volume size default 200 um
         # um, to avoid edges of the image so 15 um away

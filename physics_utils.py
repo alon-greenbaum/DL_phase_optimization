@@ -7,6 +7,7 @@ import numpy as np
 from math import pi
 import torch.fft
 import skimage.io
+import matplotlib.pyplot as plt
 
 
 
@@ -233,8 +234,16 @@ class PhysicalLayer(nn.Module):
         #Cut the PSF images at different planes
         for z in range(0, max_defocus):
             img = skimage.io.imread('beads_img_defocus/z' + str(z).zfill(2) + '.tiff')
-            range_crop_psf = range(-psf_keep_radius,psf_keep_radius+1)
-            self.imgs.append(img[range_crop_psf, range_crop_psf])
+            center_img = len(img)//2
+
+            self.imgs.append(img[center_img + -psf_keep_radius:center_img+psf_keep_radius+1,\
+                                       center_img + -psf_keep_radius:center_img+psf_keep_radius+1])
+            #Debug
+            #plt.imshow(img[center_img + -psf_keep_radius:center_img+psf_keep_radius+1,\
+            #                           center_img + -psf_keep_radius:center_img+psf_keep_radius+1])
+            #plt.axis('off')  # Turn off axis labels
+            #plt.show()
+
 
 
         self.blur = BlurLayer(device)
