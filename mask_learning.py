@@ -163,10 +163,10 @@ def learn_mask(config):
     valid_IDs = list_IDs[ntrain_batches:]
     partition = {'train': train_IDs, 'valid': valid_IDs}
     
-    training_set = PhasesOnlineDataset(partition['train'],labels)
+    training_set = PhasesOnlineDataset(partition['train'],labels, config)
     training_generator = DataLoader(training_set, **params_train)
     
-    validation_set = PhasesOnlineDataset(partition['valid'], labels)
+    validation_set = PhasesOnlineDataset(partition['valid'], labels, config)
     validation_generator = DataLoader(validation_set, **params_valid)
     
     # build model and convert all the weight tensors to cuda()
@@ -267,8 +267,8 @@ if __name__ == '__main__':
     config = {
         #How many bead cases per epoch
         "device": device, #Same GPU for all
-        "ntrain": 10000, #default 10000
-        "nvalid": 1000, #default 1000
+        "ntrain": 10, #default 10000
+        "nvalid": 1, #default 1000
         "batch_size_gen": 2, #default 2
         # Number of emitters per image
         "num_particles_range": [20, 30], #with a strong gpu [450, 550]
@@ -301,7 +301,8 @@ if __name__ == '__main__':
         "learning_rate_scheduler_factor": 0.1,
         "learning_rate_scheduler_patience": 5,
         "learning_rate_scheduler_patience_min_lr": 1e-6,
-        "max_intensity": 5e4
+        "max_intensity": 5e4,
+        "ratio_input_output_image_size": 4
     }
 
     #Generate the data for the training
