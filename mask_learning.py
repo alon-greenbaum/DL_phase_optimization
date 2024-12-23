@@ -15,9 +15,11 @@ import pickle
 from psf_gen import apply_blur_kernel
 from data_utils import PhasesOnlineDataset, savePhaseMask, generate_batch
 from cnn_utils import OpticsDesignCNN
+from cnn_utils_unet import OpticsDesignUnet
 from loss_utils import KDE_loss3D, jaccard_coeff
 from beam_profile_gen import phase_gen
 import scipy.io as sio
+
 
 #This part generates the beads location for the training and validation sets
 def gen_data(config):
@@ -72,7 +74,8 @@ def gen_data(config):
         pickle.dump(labels_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 # AG this part is generating the images of the defocused images at different planes 
-# the code will save these images as template for future use
+# the code will save these images as template for future use.
+# The code takes into aacount large beads, as well as small
 def beads_img(config):
     #Unpack the parameters
     psf_width_pixels = config['psf_width_pixels']
@@ -120,6 +123,9 @@ def learn_mask(config):
     learning_rate_scheduler_patience = config['learning_rate_scheduler_patience']
     learning_rate_scheduler_patience_min_lr = config['learning_rate_scheduler_patience_min_lr']
     device = config['device']
+    use_unet = config['use_unet']
+    num_classes = config['num_classes']
+
 
     #Set the random seed
     torch.manual_seed(random_seed)
@@ -171,10 +177,16 @@ def learn_mask(config):
     
     # build model and convert all the weight tensors to cuda()
     print('=' * 20)
-    print('CNN architecture')
+
+    if use_unet:
+        cnn = OpticsDesignUnet(num_classes, config)
+        print('UNET architecture')
+    else:
+        cnn = OpticsDesignCNN(config)
+        print('CNN architecture')
+
     print('=' * 20)
-    
-    cnn = OpticsDesignCNN(config)
+
     cnn.to(device)
 
     # adam optimizer
@@ -267,8 +279,8 @@ if __name__ == '__main__':
     config = {
         #How many bead cases per epoch
         "device": device, #Same GPU for all
-        "ntrain": 10, #default 10000
-        "nvalid": 1, #default 1000
+        "ntrain": 1000, #default 10000
+        "nvalid": 100, #default 1000
         "batch_size_gen": 2, #default 2
         # Number of emitters per image
         "num_particles_range": [20, 30], #with a strong gpu [450, 550]
@@ -286,7 +298,7 @@ if __name__ == '__main__':
         "psf_edge_remove": 15,
         "psf_keep_radius":15,
         "numerical_aperture": 0.6,  # Relates to the resolution of the detection objective
-        "bead_radius": 1.0,  # pixels 1.0 default
+        "bead_radius": 1.0,  # pixels 1.0 default, can change to make larger beads
         "random_seed": 99,
         "initial_learning_rate": 0.01,
         "batch_size": 1,
@@ -302,7 +314,14 @@ if __name__ == '__main__':
         "learning_rate_scheduler_patience": 5,
         "learning_rate_scheduler_patience_min_lr": 1e-6,
         "max_intensity": 5e4,
-        "ratio_input_output_image_size": 4
+        #In case that the network needs to downsample the image, GPU memory issues
+        "ratio_input_output_image_size": 1, # defualt with Unet 1, with ResNet 4
+        #How many planes to consider as right classification, besides the plane
+        # in focus, if 1 the -1, in focus, and +1 plane will be considered correct
+        #if 0, only the infocus plane is considered, default value 1
+        "z_range_cost_function": 1,
+        "use_unet": True,
+        "num_classes": 1
     }
 
     #Generate the data for the training
@@ -312,7 +331,8 @@ if __name__ == '__main__':
     #learn the mask
     learn_mask(config)
     
-    
+
+
     
     
     

@@ -19,19 +19,6 @@ import skimage.io
 from skimage.transform import rescale, resize
 from loss_utils import KDE_loss3D, jaccard_coeff
 
-
-N = 500 # grid size
-px = 1e-6 # pixel size (um)
-focal_length = 2e-3
-wavelength = 0.561e-6
-refractive_index = 1.0
-psf_width_pixels = 101
-pixel_size_meters = 1e-6
-psf_width_meters = psf_width_pixels * pixel_size_meters
-numerical_aperture = 0.6
-
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 # Define the basic Conv-LeakyReLU-BN
 class Conv2DLeakyReLUBN(nn.Module):
     def __init__(self, input_channels, layer_width, kernel_size, padding, dilation, negative_slope):
@@ -47,7 +34,6 @@ class Conv2DLeakyReLUBN(nn.Module):
         
         return out
 
-
 # Phase mask learning architecture
 class OpticsDesignCNN(nn.Module):
     def __init__(self, config):
@@ -59,10 +45,10 @@ class OpticsDesignCNN(nn.Module):
         self.layer3 = Conv2DLeakyReLUBN(32 + 1, 32, 3, 1, 1, 0.1)
         self.layer4 = Conv2DLeakyReLUBN(32 + 1, 32, 3, 1, 1, 0.1)
         self.layer5 = Conv2DLeakyReLUBN(32 + 1, 32, 3, 1, 1, 0.1)
-        self.layer6 = Conv2DLeakyReLUBN(32 + 1, 32, 3, 1, 1, 0.2)
-        self.layer7 = Conv2DLeakyReLUBN(32 + 1, 32, 3, 1, 1, 0.2)
-        self.layer8 = Conv2DLeakyReLUBN(32 + 1, 32, 3, 1, 1, 0.2)
-        self.layer9 = Conv2DLeakyReLUBN(32 + 1, 32, 3, 1, 1, 0.2)
+        #self.layer6 = Conv2DLeakyReLUBN(32 + 1, 32, 3, 1, 1, 0.2)
+        #self.layer7 = Conv2DLeakyReLUBN(32 + 1, 32, 3, 1, 1, 0.2)
+        #self.layer8 = Conv2DLeakyReLUBN(32 + 1, 32, 3, 1, 1, 0.2)
+        #self.layer9 = Conv2DLeakyReLUBN(32 + 1, 32, 3, 1, 1, 0.2)
         self.layer10 = nn.Conv2d(32, 1, kernel_size=1, dilation=1)
         scale_factor = 100
         #self.pred = nn.Hardtanh(min_val=0.0, max_val=scale_factor)

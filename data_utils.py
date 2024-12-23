@@ -66,6 +66,7 @@ def batch_xyz_to_boolean_grid(xyz_np, config):
 
     image_volume = config["image_volume"]
     ratio_input_output_image_size = config["ratio_input_output_image_size"]
+    z_range_cost_function = config["z_range_cost_function"]
 
     # number of particles
     batch_size, num_particles = xyz_np[:, :, 2].shape
@@ -79,7 +80,7 @@ def batch_xyz_to_boolean_grid(xyz_np, config):
     for i in range(batch_size):
         for j in range(num_particles):
             z = xyz_np[i, j, 2]
-            if -1 <= z <= 1:
+            if -z_range_cost_function <= z <= z_range_cost_function:
                 x = xyz_np[i, j, 0]
                 y = xyz_np[i, j, 1]
                 boolean_grid[i, 0, int(x // ratio_input_output_image_size), int(y // ratio_input_output_image_size)] = 1
