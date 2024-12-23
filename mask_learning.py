@@ -151,7 +151,7 @@ def learn_mask(config):
     makedirs(res_dir)
 
     # Save dictionary to a text file
-    with open(res_dir + '\data.txt', 'w') as file:
+    with open(res_dir + '\config.txt', 'w') as file:
         for key, value in config.items():
             file.write(f'{key}: {value}\n')
 
