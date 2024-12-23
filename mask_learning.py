@@ -21,6 +21,7 @@ from beam_profile_gen import phase_gen
 import scipy.io as sio
 
 
+
 #This part generates the beads location for the training and validation sets
 def gen_data(config):
     ntrain = config['ntrain']
@@ -148,7 +149,13 @@ def learn_mask(config):
     model_name = '{}_{}'.format('phase_model_', datetime.now().strftime("%Y%m%d-%H%M%S"))
     res_dir = os.path.join('./results', model_name)
     makedirs(res_dir)
-    
+
+    # Save dictionary to a text file
+    with open(res_dir + '\data.txt', 'w') as file:
+        for key, value in config.items():
+            file.write(f'{key}: {value}\n')
+
+
     # load all locations pickle file, to generate the labels go to Generate data folder
     path_pickle = path_train + 'labels.pickle'
     with open(path_pickle, 'rb') as handle:
