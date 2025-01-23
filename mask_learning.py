@@ -266,8 +266,8 @@ def learn_mask(config):
                 train_jacc += jacc_ind.item()
                 
                 # print training loss
-                #print('Epoch [%d/%d], Iter [%d/%d], Loss: %.4f\n' % (epoch+1,
-                #      num_epochs, batch_ind+1, steps_per_epoch, loss.item()))
+                print('Epoch [%d/%d], Iter [%d/%d], Loss: %.4f\n' % (epoch+1,
+                      num_epochs, batch_ind+1, steps_per_epoch, loss.item()))
                 
                 if batch_ind % 1000 == 0:
                     savePhaseMask(mask_param,batch_ind,epoch,res_dir)
@@ -286,7 +286,7 @@ if __name__ == '__main__':
     config = {
         #How many bead cases per epoch
         "device": device, #Same GPU for all
-        "ntrain": 1000, #default 10000
+        "ntrain": 1000, #default 10000 how many images per epoch
         "nvalid": 100, #default 1000
         "batch_size_gen": 2, #default 2
         # Number of emitters per image
@@ -322,12 +322,12 @@ if __name__ == '__main__':
         "learning_rate_scheduler_patience_min_lr": 1e-6,
         "max_intensity": 5e4,
         #In case that the network needs to downsample the image, GPU memory issues
-        "ratio_input_output_image_size": 1, # defualt with Unet 1, with ResNet 4
+        "ratio_input_output_image_size": 4, # defualt with Unet 1, with ResNet 4
         #How many planes to consider as right classification, besides the plane
         # in focus, if 1 the -1, in focus, and +1 plane will be considered correct
         #if 0, only the infocus plane is considered, default value 1
         "z_range_cost_function": 1,
-        "use_unet": True,
+        "use_unet": False,
         "num_classes": 1
     }
 

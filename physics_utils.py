@@ -185,10 +185,9 @@ class PhysicalLayer(nn.Module):
         [X, Y] = np.meshgrid(x, y)
         X = X * px
         Y = Y * px
-        C1 = (np.pi / (wavelength * focal_length) * (np.square(X) + np.square(Y))) % (
-                    2 * np.pi)  # lens function lens as a phase transformer
-        self.B1 = np.exp(-1j * C1)
-        self.B1 = torch.from_numpy(self.B1).type(torch.cfloat).to(device)
+        C1 = (np.pi / (wavelength * focal_length) * (np.square(X) + np.square(Y))) % (2 * np.pi)  # lens function as a phase transformer
+        #self.B1 = np.exp(-1j * C1)
+        #self.B1 = torch.from_numpy(self.B1).type(torch.cfloat).to(device)
 
         # initialize phase mask
         mask_init = 1 * np.exp(-(np.square(X) + np.square(Y)) / (2 * laser_beam_FWHC ** 2))
@@ -199,7 +198,8 @@ class PhysicalLayer(nn.Module):
         [XX, YY] = np.meshgrid(xx, yy)
         XX = XX * px
         YY = YY * px
-        #need to check if it relates to air or not added refractive index
+        
+        # need to check if it relates to air or not added refractive index
         Q1 = np.exp(1j * (np.pi * refractive_index / (wavelength * focal_length)) * (
                     np.square(XX) + np.square(YY)))  # Fresnel diffraction equation at distance = focal length
         self.Q1 = torch.from_numpy(Q1).type(torch.cfloat).to(device)
@@ -210,6 +210,7 @@ class PhysicalLayer(nn.Module):
         phy_x = N * px  # physical width (meters)
         phy_y = N * px  # physical length (meters)
         obj_size = [N, N]
+        
         # generate meshgrid
         Fs_x = obj_size[1] / phy_x
         Fs_y = obj_size[0] / phy_y
@@ -217,10 +218,12 @@ class PhysicalLayer(nn.Module):
         dFy = Fs_y / obj_size[0]
         Fx = np.arange(-Fs_x / 2, Fs_x / 2, dFx)
         Fy = np.arange(-Fs_y / 2, Fs_y / 2, dFy)
+        
         # alpha and beta (wavenumber components) 
         alpha = refractive_index * wavelength * Fx
         beta = refractive_index * wavelength * Fy
         [ALPHA, BETA] = np.meshgrid(alpha, beta)
+        
         # go over and make sure that it is not complex
         gamma_cust = np.zeros_like(ALPHA)
         for i in range(len(ALPHA)):
@@ -231,7 +234,7 @@ class PhysicalLayer(nn.Module):
 
         # read defocus images
         self.imgs = []
-        #Cut the PSF images at different planes
+        # Cut the PSF images at different planes
         for z in range(0, max_defocus):
             img = skimage.io.imread('beads_img_defocus/z' + str(z).zfill(2) + '.tiff')
             center_img = len(img)//2
@@ -255,15 +258,17 @@ class PhysicalLayer(nn.Module):
     def forward(self, mask_param, xyz, Nphotons):
 
         Nbatch, Nemitters = xyz.shape[0], xyz.shape[1]
-        mask_param = self.mask_real * torch.exp(1j * mask_param)
-        mask_param = mask_param[None, None, :]
-        #multiply the mask with the phase function of the lens (B1)
-        B1 = self.B1 * mask_param
+        mask_param = torch.sqrt(self.mask_real) * torch.exp(1j * mask_param) # added sqrt to the beam illumination
+        mask_param = mask_param[None, None, :] # contains the sqrt of illumination of the gaussian laser * the SLM phase pattern (bad name)
+        
+        # take the fourier transform instead of multiply the mask with the phase function of the lens (B1)
+        B1 = torch.square(torch.abs(torch.fft.fft2(mask_param)))
 
-        # AG - Need to check if the FFT will be faster if padded to 1024
-        # pad_to_power_2 = NextPowerOfTwo(B1.shape[0])-B1.shape[0]
+        # AG - Need to check if the FFT will be faster if padded to 1024 
+        # pad_to_power_2 = NextPowerOfTwo(B1.shape[0])-B1.shape[0] # why is this commented out?
         pad_to_power_2 = 500
         E1 = F.pad(B1, (pad_to_power_2//2, pad_to_power_2//2, pad_to_power_2//2, pad_to_power_2//2), 'constant', 0)
+        
         # Goodman book equation 4-14, convolution method - lens kernel (Q1) and the image after mask and lens function (E2)
         E2 = torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fft2(E1) * torch.fft.fft2(self.Q1)))
 
