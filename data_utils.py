@@ -7,11 +7,15 @@ import numpy as np
 import random
 from skimage.io import imread
 import skimage
+import yaml
 
 
 # ======================================================================================================================
 # numpy array conversion to variable and numpy complex conversion to 2 channel torch tensor
 # ======================================================================================================================
+def load_config(config_file):
+    with open(config_file, 'r') as stream:
+        return yaml.load(stream, Loader=yaml.Loader)
 
 # function converts numpy array on CPU to torch Variable on GPU
 def to_var(x):

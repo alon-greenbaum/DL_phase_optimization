@@ -104,6 +104,7 @@ class poisson_noise_approx(nn.Module):
 
         # result
         return input_poiss
+    range
 
 
 # Overall noise layer
@@ -154,64 +155,58 @@ class Normalize01(nn.Module):
 class PhysicalLayer(nn.Module):
     def __init__(self, config):
         super(PhysicalLayer, self).__init__()
-        #unpack the config
-        N =  config['N']
-        px = config['px']
-        wavelength = config['wavelength']
-        focal_length = config['focal_length']
-        psf_width_pixels = config['psf_width_pixels']
-        psf_edge_remove = config['psf_edge_remove']
-        laser_beam_FWHC = config['laser_beam_FWHC']
-        refractive_index = config['refractive_index']
-        max_defocus = config['max_defocus']
-        image_volume = config['image_volume']
-        max_intensity = config['max_intensity']
-        psf_keep_radius = config['psf_keep_radius']
-        device = config['device']
-
-        self.device = device
-        self.psf_keep_radius = psf_keep_radius
-        self.px = px #the pixel size used
-        self.N = N #the size of the FOV in pixels
-        self.max_intensity = torch.tensor(max_intensity)
-
-        # to transer the physical size of the imaging volume
-        self.image_volume_um = image_volume
+        
+        # unpack the config file into instance variables
+        self.N = config['N']
+        self.px = config['px']
+        self.wavelength = config['wavelength']
+        self.focal_length = config['focal_length']
+        self.psf_width_pixels = config['psf_width_pixels']
+        self.psf_edge_remove = config['psf_edge_remove']
+        self.laser_beam_FWHC = config['laser_beam_FWHC']
+        self.refractive_index = config['refractive_index']
+        self.max_defocus = config['max_defocus']
+        self.image_volume_um = config['image_volume']
+        self.max_intensity = torch.tensor(config['max_intensity'])
+        self.psf_keep_radius = config['psf_keep_radius']
+        self.device = config['device']
+        self.lens_approach = config['lens_approach']
 
 
         self.up = nn.UpsamplingBilinear2d(scale_factor=2)
-        x = list(range(-N // 2, N // 2))
-        y = list(range(-N // 2, N // 2))
+        
+        # Generate meshgrid
+        x = list(range(-self.N // 2, self.N // 2))
+        y = list(range(-self.N // 2, self.N // 2))
         [X, Y] = np.meshgrid(x, y)
-        X = X * px
-        Y = Y * px
-        C1 = (np.pi / (wavelength * focal_length) * (np.square(X) + np.square(Y))) % (2 * np.pi)  # lens function as a phase transformer
-        #self.B1 = np.exp(-1j * C1)
-        #self.B1 = torch.from_numpy(self.B1).type(torch.cfloat).to(device)
+        X = X * self.px
+        Y = Y * self.px
+        C1 = (np.pi / (self.wavelength * self.focal_length) * (np.square(X) + np.square(Y))) % (2 * np.pi)
+        self.fresnel_approx_phase_constant = np.exp(-1j * C1)
+        self.fresnel_approx_phase_constant = torch.from_numpy(self.fresnel_approx_phase_constant).type(torch.cfloat).to(self.device)
 
-        # initialize phase mask
-        mask_init = 1 * np.exp(-(np.square(X) + np.square(Y)) / (2 * laser_beam_FWHC ** 2))
-        self.mask_real = torch.from_numpy(mask_init).type(torch.FloatTensor).to(device)
+        # Initialize phase mask
+        self.laser_intensity = 1 * np.exp(-(np.square(X) + np.square(Y)) / (2 * self.laser_beam_FWHC ** 2))
+        self.laser_intensity = torch.from_numpy(self.laser_intensity).type(torch.FloatTensor).to(self.device)
 
-        xx = list(range(-N + 1, N + 1))
-        yy = list(range(-N + 1, N + 1))
+        xx = list(range(-self.N + 1, self.N + 1))
+        yy = list(range(-self.N + 1, self.N + 1))
         [XX, YY] = np.meshgrid(xx, yy)
-        XX = XX * px
-        YY = YY * px
+        XX = XX * self.px
+        YY = YY * self.px
         
-        # need to check if it relates to air or not added refractive index
-        Q1 = np.exp(1j * (np.pi * refractive_index / (wavelength * focal_length)) * (
-                    np.square(XX) + np.square(YY)))  # Fresnel diffraction equation at distance = focal length
-        self.Q1 = torch.from_numpy(Q1).type(torch.cfloat).to(device)
+        # Fresnel diffraction equation at distance = focal length
+        Q1 = np.exp(1j * (np.pi * self.refractive_index / (self.wavelength * self.focal_length)) * (
+                    np.square(XX) + np.square(YY)))
+        self.Q1 = torch.from_numpy(Q1).type(torch.cfloat).to(self.device)
 
-        # angular specturm
-        k = 2 * refractive_index * np.pi / wavelength
-        self.k = k
-        phy_x = N * px  # physical width (meters)
-        phy_y = N * px  # physical length (meters)
-        obj_size = [N, N]
+        # Angular spectrum
+        self.k = 2 * self.refractive_index * np.pi / self.wavelength
+        phy_x = self.N * self.px  # physical width (meters)
+        phy_y = self.N * self.px  # physical length (meters)
+        obj_size = [self.N, self.N]
         
-        # generate meshgrid
+        # Generate meshgrid
         Fs_x = obj_size[1] / phy_x
         Fs_y = obj_size[0] / phy_y
         dFx = Fs_x / obj_size[1]
@@ -219,50 +214,47 @@ class PhysicalLayer(nn.Module):
         Fx = np.arange(-Fs_x / 2, Fs_x / 2, dFx)
         Fy = np.arange(-Fs_y / 2, Fs_y / 2, dFy)
         
-        # alpha and beta (wavenumber components) 
-        alpha = refractive_index * wavelength * Fx
-        beta = refractive_index * wavelength * Fy
+        # Alpha and beta (wavenumber components)
+        alpha = self.refractive_index * self.wavelength * Fx
+        beta = self.refractive_index * self.wavelength * Fy
         [ALPHA, BETA] = np.meshgrid(alpha, beta)
         
-        # go over and make sure that it is not complex
-        gamma_cust = np.zeros_like(ALPHA)
+        # Ensure that it is not complex
+        self.gamma_cust = np.zeros_like(ALPHA)
         for i in range(len(ALPHA)):
             for j in range(len(ALPHA[0])):
                 if 1 - np.square(ALPHA[i][j]) - np.square(BETA[i][j]) > 0:
-                    gamma_cust[i, j] = np.sqrt(1 - np.square(ALPHA[i][j]) - np.square(BETA[i][j]))
-        self.gamma_cust = torch.from_numpy(gamma_cust).type(torch.FloatTensor).to(device)
+                    self.gamma_cust[i, j] = np.sqrt(1 - np.square(ALPHA[i][j]) - np.square(BETA[i][j]))
+        self.gamma_cust = torch.from_numpy(self.gamma_cust).type(torch.FloatTensor).to(self.device)
 
-        # read defocus images
+        # Read defocus images
         self.imgs = []
-        # Cut the PSF images at different planes
-        for z in range(0, max_defocus):
+        for z in range(0, self.max_defocus):
             img = skimage.io.imread('beads_img_defocus/z' + str(z).zfill(2) + '.tiff')
-            center_img = len(img)//2
+            center_img = len(img) // 2
 
-            self.imgs.append(img[center_img + -psf_keep_radius:center_img+psf_keep_radius+1,\
-                                       center_img + -psf_keep_radius:center_img+psf_keep_radius+1])
-            #Debug
-            #plt.imshow(img[center_img + -psf_keep_radius:center_img+psf_keep_radius+1,\
-            #                           center_img + -psf_keep_radius:center_img+psf_keep_radius+1])
-            #plt.axis('off')  # Turn off axis labels
-            #plt.show()
+            self.imgs.append(img[center_img - self.psf_keep_radius:center_img + self.psf_keep_radius + 1,
+                                center_img - self.psf_keep_radius:center_img + self.psf_keep_radius + 1])
+            # Debug
+            # plt.imshow(img[center_img - self.psf_keep_radius:center_img + self.psf_keep_radius + 1,
+            #                center_img - self.psf_keep_radius:center_img + self.psf_keep_radius + 1])
+            # plt.axis('off')  # Turn off axis labels
+            # plt.show()
 
-
-
-        self.blur = BlurLayer(device)
+        self.blur = BlurLayer(self.device)
         self.crop = Croplayer()
         self.img4dto3d = imgs4dto3d()
-        self.noise = NoiseLayer(device)
+        self.noise = NoiseLayer(self.device)
         self.norm01 = Normalize01()
 
     def forward(self, mask_param, xyz, Nphotons):
 
         Nbatch, Nemitters = xyz.shape[0], xyz.shape[1]
-        mask_param = torch.sqrt(self.mask_real) * torch.exp(1j * mask_param) # added sqrt to the beam illumination
+        mask_param = torch.sqrt(self.laser_intensity) * torch.exp(1j * mask_param) # added sqrt to the beam illumination
         mask_param = mask_param[None, None, :] # contains the sqrt of illumination of the gaussian laser * the SLM phase pattern (bad name)
         
         # take the fourier transform instead of multiply the mask with the phase function of the lens (B1)
-        B1 = torch.square(torch.abs(torch.fft.fft2(mask_param)))
+        B1 = torch.fft.fft2(mask_param)
 
         # AG - Need to check if the FFT will be faster if padded to 1024 
         # pad_to_power_2 = NextPowerOfTwo(B1.shape[0])-B1.shape[0] # why is this commented out?
@@ -272,7 +264,7 @@ class PhysicalLayer(nn.Module):
         # Goodman book equation 4-14, convolution method - lens kernel (Q1) and the image after mask and lens function (E2)
         E2 = torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fft2(E1) * torch.fft.fft2(self.Q1)))
 
-        output_layer = E2[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
+        output_layer = E2[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2] # this is capturing the 3rd and 4th dimensions from 250-750
 
         imgs3D = torch.zeros(Nbatch, 1, self.image_volume_um[0], self.image_volume_um[0]).type(torch.FloatTensor).to(self.device)
 
@@ -286,20 +278,25 @@ class PhysicalLayer(nn.Module):
         for i in range(Nbatch):
             for j in range(Nemitters):
                 # change x value to fit different field of view
-                x = xyz[i, j, 0].type(torch.LongTensor) - self.image_volume_um[0]//2
+                x = xyz[i, j, 0].type(torch.LongTensor) - self.image_volume_um[0]//2 # xyz holds the locations of the beads in the volume
                 y = xyz[i, j, 1].type(torch.LongTensor)
                 z = xyz[i, j, 2].type(torch.LongTensor)
 
                 x_ori = xyz[i, j, 0].type(torch.LongTensor)
+                # this is propogating the light from the illumination focal plane to the bead
+                # don't understand gamma_cust yet
                 U1 = torch.fft.ifft2(torch.fft.ifftshift(torch.fft.fftshift(torch.fft.fft2(output_layer)) * torch.exp(
                     1j * self.k * self.gamma_cust * x * 1e-6)))
                 U1 = torch.real(U1 * torch.conj(U1))
 
-                #Here we assume that the beam is being dithered up and down
+                # Here we assume that the beam is being dithered up and down (summing in the 3rd dimension)
                 intensity = torch.sum(U1[0, 0, :, int(((self.N*self.px*1e6)//2-1) + z)])
+                
+                # this is multiplying the intensity of the beam with the PSF that correspondes to how out of focus the bead is and cummulating each beads contribution to the image
                 imgs3D[i, 0, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1,\
                 y - self.psf_keep_radius: y + self.psf_keep_radius + 1] += torch.from_numpy(
-                    self.imgs[abs(z.item())].astype('float32')).type(torch.FloatTensor).to(self.device) * intensity
+                    self.imgs[abs(z.item())].astype('float32')).type(torch.FloatTensor).to(self.device) * intensity 
+                
 
                 # Debug
                 #a = imgs3D[i, 0, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1,\

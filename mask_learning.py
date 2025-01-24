@@ -13,25 +13,33 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import pickle
 from psf_gen import apply_blur_kernel
-from data_utils import PhasesOnlineDataset, savePhaseMask, generate_batch
+from data_utils import PhasesOnlineDataset, savePhaseMask, generate_batch, load_config
 from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
 from loss_utils import KDE_loss3D, jaccard_coeff
 from beam_profile_gen import phase_gen
 import scipy.io as sio
 
-
+def list_to_range(lst):
+    if len(lst) == 1:
+        return range(lst[0])
+    if len(lst) == 2:
+        return range(lst[0], lst[1])
+    elif len(lst) == 3:
+        return range(lst[0], lst[1], lst[2])
 
 #This part generates the beads location for the training and validation sets
 def gen_data(config):
     ntrain = config['ntrain']
     nvalid = config['nvalid']
     batch_size_gen = config['batch_size_gen']
-    particle_spatial_range_xy = config['particle_spatial_range_xy']
-    particle_spatial_range_z = config['particle_spatial_range_z']
+    particle_spatial_range_xy = list_to_range(config['particle_spatial_range_xy'])
+    particle_spatial_range_z = list_to_range(config['particle_spatial_range_z'])
     num_particles_range = config['num_particles_range']
     random_seed = config['random_seed']
     device = config['device']
+    path_train = config['path_train']
+    
 
     torch.backends.cudnn.benchmark = True
 
@@ -39,7 +47,6 @@ def gen_data(config):
     torch.manual_seed(random_seed)
     np.random.seed(random_seed//2 + 1)
 
-    path_train = 'traininglocations/'
     if not (os.path.isdir(path_train)):
         os.mkdir(path_train)
 
@@ -70,7 +77,7 @@ def gen_data(config):
         labels_dict[str(i + ntrain_batches)] = {'xyz': xyz, 'N': Nphotons}
         print('Validation Example [%d / %d]' % (i + 1, nvalid_batches))
 
-    path_labels = path_train + 'labels.pickle'
+    path_labels = os.path.join(path_train,'labels.pickle')
     with open(path_labels, 'wb') as handle:
         pickle.dump(labels_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -99,7 +106,7 @@ def beads_img(config):
     #41 refers to 41 um maximum defocus in the simulation; the volume was 200x200x30um^3, 30 um in Z so max 15 um defocus
     for i in range(max_defocus):
         blurred_img = apply_blur_kernel(bead_ori_img, setup_defocus_psf[i])
-        skimage.io.imsave(data_path + 'z' + str(i).zfill(2) + '.tiff', blurred_img.astype('uint16'))
+        skimage.io.imsave(os.path.join(data_path, 'z' + str(i).zfill(2) + '.tiff'), blurred_img.astype('uint16'))
     return None
 
 def makedirs(path):
@@ -142,22 +149,23 @@ def learn_mask(config):
     mask_param = nn.Parameter(mask_phase)
     mask_param.requires_grad_()
 
-    if not (os.path.isdir(path_save)):
-        os.mkdir(path_save)
+    # I dont know what goes here so i comment out - ryan?
+    #if not (os.path.isdir(path_save)):
+    #    os.mkdir(path_save)
     
     # set results folder
     model_name = '{}_{}'.format('phase_model_', datetime.now().strftime("%Y%m%d-%H%M%S"))
-    res_dir = os.path.join('./results', model_name)
+    res_dir = os.path.join('results', model_name)
     makedirs(res_dir)
 
     # Save dictionary to a text file
-    with open(res_dir + '\data.txt', 'w') as file:
+    with open(os.path.join(res_dir, 'data.txt'), 'w') as file:
         for key, value in config.items():
             file.write(f'{key}: {value}\n')
 
 
     # load all locations pickle file, to generate the labels go to Generate data folder
-    path_pickle = path_train + 'labels.pickle'
+    path_pickle = os.path.join(path_train, 'labels.pickle')
     with open(path_pickle, 'rb') as handle:
         labels = pickle.load(handle)
     
@@ -275,14 +283,18 @@ def learn_mask(config):
         train_losses.append(train_loss)
         np.savetxt('train_losses.txt',train_losses,delimiter=',')
         if epoch % 10 == 0:
-            torch.save(cnn.state_dict(),res_dir + '/net_{}.pt'.format(epoch))
+            torch.save(cnn.state_dict(),os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
         
     return labels
 
 if __name__ == '__main__':
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
+    
+    config = load_config("config.yaml")
+    config['device'] = device
+    
+    """
     config = {
         #How many bead cases per epoch
         "device": device, #Same GPU for all
@@ -330,6 +342,7 @@ if __name__ == '__main__':
         "use_unet": False,
         "num_classes": 1
     }
+    """
 
     #Generate the data for the training
     gen_data(config)
