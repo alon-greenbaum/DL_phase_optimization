@@ -13,7 +13,7 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import pickle
 from psf_gen import apply_blur_kernel
-from data_utils import PhasesOnlineDataset, savePhaseMask, generate_batch, load_config
+from data_utils import PhasesOnlineDataset, savePhaseMask, generate_batch, load_config, makedirs
 from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
 from loss_utils import KDE_loss3D, jaccard_coeff
@@ -109,9 +109,7 @@ def beads_img(config):
         skimage.io.imsave(os.path.join(data_path, 'z' + str(i).zfill(2) + '.tiff'), blurred_img.astype('uint16'))
     return None
 
-def makedirs(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
+
         
 def learn_mask(config):
 

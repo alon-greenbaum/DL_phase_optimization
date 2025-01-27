@@ -8,6 +8,8 @@ import random
 from skimage.io import imread
 import skimage
 import yaml
+import os
+import datetime
 
 
 # ======================================================================================================================
@@ -17,6 +19,10 @@ def load_config(config_file):
     with open(config_file, 'r') as stream:
         return yaml.load(stream, Loader=yaml.Loader)
 
+def makedirs(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+        
 # function converts numpy array on CPU to torch Variable on GPU
 def to_var(x):
     """
@@ -131,6 +137,24 @@ def savePhaseMask(mask_param, ind, epoch, res_dir):
     skimage.io.imsave(res_dir + '/mask_phase_epoch_' + str(epoch) + '_' + str(ind) + '.tiff', mask_numpy)
     return 0
 
+def save_output_layer(output_layer, base_dir, lens_approach, counter):
+    # Convert the tensor to a NumPy array
+    output_array = torch.abs(output_layer).cpu().detach().numpy()[0,0,:,:]
+
+    # Get the current datetime and format it
+    current_datetime = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Create the filename
+    filename = f"{counter}.tiff"
+    dir = os.path.join(base_dir, lens_approach)
+    
+    # create directory if it does not exist
+    makedirs(dir)
+    
+    filepath = os.path.join(dir, filename)
+    
+    # Save the array as a TIFF file
+    skimage.io.imsave(filepath, output_array)
 
 if __name__ == '__main__':
     generate_batch(8)
