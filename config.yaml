@@ -42,3 +42,4 @@ z_range_cost_function: 1
 use_unet: True
 num_classes: 1
 lens_approach: "fourier" # "fourier" or "fresnel"
+power_2: 1024 # pad to this power for fourier transform

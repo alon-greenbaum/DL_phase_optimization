@@ -93,6 +93,8 @@ def beads_img(config):
     setup_defocus_psf = sio.loadmat('psf_z.mat')['psf'] #this is a matrix that Chen has generated before
     ori_intensity = config['ori_intensity']
     max_defocus = config['max_defocus']
+    
+    makedirs(data_path)
 
     #generate the bead in the center based on the bead size in pixels
     for x in range(int(math.floor(psf_width_pixels/2)-bead_radius), int(math.floor(psf_width_pixels/2)+bead_radius+1)):

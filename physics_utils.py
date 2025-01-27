@@ -161,8 +161,8 @@ class PhysicalLayer(nn.Module):
         #unpack the config
         N =  config['N']
         px = config['px']
-        wavelength = config['wavelength']
-        focal_length = config['focal_length']
+        self.wavelength = config['wavelength']
+        self.focal_length = config['focal_length']
         psf_width_pixels = config['psf_width_pixels']
         psf_edge_remove = config['psf_edge_remove']
         laser_beam_FWHC = config['laser_beam_FWHC']
@@ -179,6 +179,8 @@ class PhysicalLayer(nn.Module):
         self.N = N #the size of the FOV in pixels
         self.max_intensity = torch.tensor(max_intensity)
         self.counter = 0
+        self.power_2 = config['power_2']
+        self.pad_to_power_2 = self.power_2-N
 
         # to transer the physical size of the imaging volume
         self.image_volume_um = image_volume
@@ -201,18 +203,18 @@ class PhysicalLayer(nn.Module):
         self.A = torch.from_numpy(self.A).type(torch.FloatTensor).to(device)
         
         if self.lens_approach == 'fresnel':
-            C1 = (np.pi / (wavelength * focal_length) * (np.square(X) + np.square(Y))) % (
+            C1 = (np.pi / (self.wavelength * self.focal_length) * (np.square(X) + np.square(Y))) % (
                     2 * np.pi)  # lens function lens as a phase transformer
             self.B1 = np.exp(-1j * C1)
             self.B1 = torch.from_numpy(self.B1).type(torch.cfloat).to(device)
         
             #need to check if it relates to air or not added refractive index
-            Q1 = np.exp(1j * (np.pi * refractive_index / (wavelength * focal_length)) * (
+            Q1 = np.exp(1j * (np.pi * refractive_index / (self.wavelength * self.focal_length)) * (
                         np.square(XX) + np.square(YY)))  # Fresnel diffraction equation at distance = focal length
             self.Q1 = torch.from_numpy(Q1).type(torch.cfloat).to(device)
 
         # angular specturm
-        k = 2 * refractive_index * np.pi / wavelength
+        k = 2 * refractive_index * np.pi / self.wavelength
         self.k = k
         phy_x = N * px  # physical width (meters)
         phy_y = N * px  # physical length (meters)
@@ -225,8 +227,8 @@ class PhysicalLayer(nn.Module):
         Fx = np.arange(-Fs_x / 2, Fs_x / 2, dFx)
         Fy = np.arange(-Fs_y / 2, Fs_y / 2, dFy)
         # alpha and beta (wavenumber components) 
-        alpha = refractive_index * wavelength * Fx
-        beta = refractive_index * wavelength * Fy
+        alpha = refractive_index * self.wavelength * Fx
+        beta = refractive_index * self.wavelength * Fy
         [ALPHA, BETA] = np.meshgrid(alpha, beta)
         # go over and make sure that it is not complex
         gamma_cust = np.zeros_like(ALPHA)
@@ -271,8 +273,8 @@ class PhysicalLayer(nn.Module):
 
             # AG - Need to check if the FFT will be faster if padded to 1024
             # pad_to_power_2 = NextPowerOfTwo(B1.shape[0])-B1.shape[0]
-            pad_to_power_2 = 500
-            E1 = F.pad(B1, (pad_to_power_2//2, pad_to_power_2//2, pad_to_power_2//2, pad_to_power_2//2), 'constant', 0)
+            
+            E1 = F.pad(B1, (self.pad_to_power_2//2, self.pad_to_power_2//2, self.pad_to_power_2//2, self.pad_to_power_2//2), 'constant', 0)
             # Goodman book equation 4-14, convolution method - lens kernel (Q1) and the image after mask and lens function (E2)
             E2 = torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fft2(E1) * torch.fft.fft2(self.Q1)))
             output_layer = E2[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
@@ -281,9 +283,10 @@ class PhysicalLayer(nn.Module):
             Ta = torch.exp(1j * mask_param)
             Uo = self.A * Ta
             Uo = Uo[None, None, :] 
-            Fo = torch.fft.fftshift(torch.fft.fft2(Uo))
-            Uf = Fo # maybe multiply by a constant phase 1/(j * wavelength * focal_length)
-            output_layer = Uf
+            Uo_pad = F.pad(Uo, (self.pad_to_power_2//2, self.pad_to_power_2//2, self.pad_to_power_2//2, self.pad_to_power_2//2), 'constant', 0)
+            Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad))
+            Uf = Fo/(1j * self.wavelength * self.focal_length) # maybe multiply by a constant phase 1/(j * wavelength * focal_length)
+            output_layer = Uf[:, :, (self.power_2//2 - self.N // 2):(self.power_2//2 + self.N // 2), (self.power_2//2 - self.N // 2):(self.power_2//2 + self.N // 2)]
             
         if self.counter % 50 == 0 :    
             save_output_layer(output_layer, "output_layer_imgs", self.lens_approach, self.counter)
