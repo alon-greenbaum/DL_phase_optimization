@@ -137,16 +137,13 @@ def savePhaseMask(mask_param, ind, epoch, res_dir):
     skimage.io.imsave(res_dir + '/mask_phase_epoch_' + str(epoch) + '_' + str(ind) + '.tiff', mask_numpy)
     return 0
 
-def save_output_layer(output_layer, base_dir, lens_approach, counter):
+def save_output_layer(output_layer, base_dir, lens_approach, counter, datetime):
     # Convert the tensor to a NumPy array
-    output_array = torch.abs(output_layer).cpu().detach().numpy()[0,0,:,:]
-
-    # Get the current datetime and format it
-    current_datetime = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_array = torch.square(torch.abs(output_layer)).cpu().detach().numpy()[0,0,:,:]
 
     # Create the filename
     filename = f"{counter}.tiff"
-    dir = os.path.join(base_dir, lens_approach)
+    dir = os.path.join(base_dir, lens_approach, datetime)
     
     # create directory if it does not exist
     makedirs(dir)
