@@ -132,7 +132,6 @@ def learn_mask(config):
     learning_rate_scheduler_patience_min_lr = config['learning_rate_scheduler_patience_min_lr']
     device = config['device']
     use_unet = config['use_unet']
-    num_classes = config['num_classes']
 
 
     #Set the random seed
@@ -194,7 +193,7 @@ def learn_mask(config):
     print('=' * 20)
 
     if use_unet:
-        cnn = OpticsDesignUnet(num_classes, config)
+        cnn = OpticsDesignUnet(config)
         print('UNET architecture')
     else:
         cnn = OpticsDesignCNN(config)

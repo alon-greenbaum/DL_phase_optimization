@@ -22,11 +22,12 @@ def double_convolution(in_channels, out_channels):
 
 
 class OpticsDesignUnet(nn.Module):
-    def __init__(self, num_classes, config):
+    def __init__(self, config):
         super(OpticsDesignUnet, self).__init__()
         # adding the physicalLayer into the mix
         self.physicalLayer = PhysicalLayer(config)
         self.norm = nn.BatchNorm2d(num_features=1, affine=True)
+        num_classes = config['num_classes']
 
         # The code from //debuggercafe.com/unet-from-scratch-using-pytorch/
         self.max_pool2d = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -79,14 +80,15 @@ class OpticsDesignUnet(nn.Module):
         out = self.out(im)
         return out
 
-    if __name__ == '__main__':
-        input_image = torch.rand((1, 3, 512, 512))
-        model = UNet(num_classes=10)
-        # Total parameters and trainable parameters.
-        total_params = sum(p.numel() for p in model.parameters())
-        print(f"{total_params:,} total parameters.")
-        total_trainable_params = sum(
-            p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"{total_trainable_params:,} training parameters.")
-        outputs = model(input_image)
-        print(outputs.shape)
+if __name__ == '__main__':
+    input_image = torch.rand((1, 3, 512, 512))
+    config = {'num_classes' : 1}
+    model = OpticsDesignUnet(config)
+    # Total parameters and trainable parameters.
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"{total_params:,} total parameters.")
+    total_trainable_params = sum(
+        p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"{total_trainable_params:,} training parameters.")
+    outputs = model(input_image)
+    print(outputs.shape)

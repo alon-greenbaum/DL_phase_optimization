@@ -12,6 +12,7 @@ from datetime import datetime
 import os
 from data_utils import save_output_layer
 
+# nohup python mask_learning.py &> ./logs/01-31-25-09-38.txt &
 
 
 # This function creates a 2D gaussian filter with std=1, without normalization.
@@ -286,11 +287,11 @@ class PhysicalLayer(nn.Module):
              # tried adding self.B1 here, but it didn't work
             Uo = self.A * Ta # light directly behiund the SLM (or in our case reflected from the SLM)
             Uo = Uo[None, None, :] # not sure why mani did this?
-            Uo_pad = F.pad(Uo, (self.pad_to_power_2//2, self.pad_to_power_2//2, self.pad_to_power_2//2, self.pad_to_power_2//2), 'constant', 0) # padded to interpolate with fft
+            Uo_pad = F.pad(Uo, (self.pad//2, self.pad//2, self.pad//2, self.pad//2), 'constant', 0) # padded to interpolate with fft
             Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad)) # fourier spectrum of the light directly after the SLM
             # can ignore a constant phase factor from goodman 1/(1j * self.wavelength * self.focal_length)
             Uf = Fo # light at the back focal plane of the lens   
-            output_layer = Uf[:, :, (self.power_2//2 - self.N // 2):(self.power_2//2 + self.N // 2), (self.power_2//2 - self.N // 2):(self.power_2//2 + self.N // 2)]
+            output_layer = Uf[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
         
         elif self.lens_approach == 'convolution':
             Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)

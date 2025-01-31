@@ -21,7 +21,7 @@ bead_radius: 1.0  # pixels 1.0 default, can change to make larger beads
 random_seed: 99
 initial_learning_rate: 0.01
 batch_size: 1
-max_epochs: 200
+max_epochs: 50
 mask_phase_pixels: 500
 data_path: "beads_img_defocus"
 path_save: "data_mask_learning"
