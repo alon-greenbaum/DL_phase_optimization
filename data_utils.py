@@ -137,7 +137,7 @@ def savePhaseMask(mask_param, ind, epoch, res_dir):
     skimage.io.imsave(res_dir + '/mask_phase_epoch_' + str(epoch) + '_' + str(ind) + '.tiff', mask_numpy)
     return 0
 
-def save_output_layer(output_layer, base_dir, lens_approach, counter, datetime):
+def save_output_layer(output_layer, base_dir, lens_approach, counter, datetime, config):
     # Convert the tensor to a NumPy array
     output_array = torch.square(torch.abs(output_layer)).cpu().detach().numpy()[0,0,:,:]
 
@@ -152,6 +152,12 @@ def save_output_layer(output_layer, base_dir, lens_approach, counter, datetime):
     
     # Save the array as a TIFF file
     skimage.io.imsave(filepath, output_array)
+    
+    if counter == 0:
+        # print config
+        with open(os.path.join(dir, 'config.yaml'), 'w') as file:
+            for key, value in config.items():
+                file.write(f'{key}: {value}\n')
 
 if __name__ == '__main__':
     generate_batch(8)

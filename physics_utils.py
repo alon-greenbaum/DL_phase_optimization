@@ -160,6 +160,8 @@ class PhysicalLayer(nn.Module):
     def __init__(self, config):
         super(PhysicalLayer, self).__init__()
         #unpack the config
+        self.config = config
+        self.bfp_dir = config["bfp_dir"]
         N =  config['N']
         self.px = config['px']  #the pixel size used
         self.wavelength = config['wavelength']
@@ -313,7 +315,7 @@ class PhysicalLayer(nn.Module):
             raise ValueError('lens approach not supported')
             
         if self.counter % 50 == 0 :    
-            save_output_layer(output_layer, "output_layer_imgs", self.lens_approach, self.counter, self.datetime)
+            save_output_layer(output_layer, self.bfp_dir, self.lens_approach, self.counter, self.datetime, self.config)
         self.counter += 1
         
         imgs3D = torch.zeros(Nbatch, 1, self.image_volume_um[0], self.image_volume_um[0]).type(torch.FloatTensor).to(self.device)

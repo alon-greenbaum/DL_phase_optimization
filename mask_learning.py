@@ -158,7 +158,7 @@ def learn_mask(config):
     makedirs(res_dir)
 
     # Save dictionary to a text file
-    with open(os.path.join(res_dir, 'data.txt'), 'w') as file:
+    with open(os.path.join(res_dir, 'config.yaml'), 'w') as file:
         for key, value in config.items():
             file.write(f'{key}: {value}\n')
 
@@ -280,7 +280,7 @@ def learn_mask(config):
                     savePhaseMask(mask_param,batch_ind,epoch,res_dir)
                 
         train_losses.append(train_loss)
-        np.savetxt('train_losses.txt',train_losses,delimiter=',')
+        np.savetxt(os.path.join(res_dir,'train_losses.txt'),train_losses,delimiter=',')
         if epoch % 10 == 0:
             torch.save(cnn.state_dict(),os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
         

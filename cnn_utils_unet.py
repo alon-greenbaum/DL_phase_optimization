@@ -14,9 +14,13 @@ def double_convolution(in_channels, out_channels):
     """
     conv_op = nn.Sequential(
         nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-        nn.ReLU(inplace=True),
+        nn.LeakyReLU(inplace=True),
+        nn.BatchNorm2d(out_channels),
         nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-        nn.ReLU(inplace=True)
+        nn.LeakyReLU(inplace=True),
+        nn.BatchNorm2d(out_channels)
+        #ryan 2-5-25 - added batch normalization after activation function 
+        # and changed activation function to leaky relu
     )
     return conv_op
 
