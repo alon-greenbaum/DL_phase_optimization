@@ -6,23 +6,21 @@ from physics_utils import PhysicalLayer
 # AG This code was taken from
 # ://debuggercafe.com/unet-from-scratch-using-pytorch/
 
-def double_convolution(in_channels, out_channels):
+def double_convolution(in_channels, out_channels, dropout=0.0):
     """
-    In the original paper implementation, the convolution operations were
-    not padded but we are padding them here. This is because, we need the
-    output result size to be same as input size.
+    Convolution block with optional dropout.
     """
-    conv_op = nn.Sequential(
+    conv_layers = [
         nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+        nn.Dropout2d(dropout) if dropout > 0 else nn.Identity(),
         nn.LeakyReLU(inplace=True),
         nn.BatchNorm2d(out_channels),
         nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+        nn.Dropout2d(dropout) if dropout > 0 else nn.Identity(),
         nn.LeakyReLU(inplace=True),
         nn.BatchNorm2d(out_channels)
-        #ryan 2-5-25 - added batch normalization after activation function 
-        # and changed activation function to leaky relu
-    )
-    return conv_op
+    ]
+    return nn.Sequential(*conv_layers)
 
 
 class OpticsDesignUnet(nn.Module):
@@ -32,6 +30,7 @@ class OpticsDesignUnet(nn.Module):
         self.physicalLayer = PhysicalLayer(config)
         self.norm = nn.BatchNorm2d(num_features=1, affine=True)
         num_classes = config['num_classes']
+        dropout = config.get('dropout', 0.0)  # new dropout value from config
 
         # The code from //debuggercafe.com/unet-from-scratch-using-pytorch/
         self.max_pool2d = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -41,22 +40,22 @@ class OpticsDesignUnet(nn.Module):
         # AG since we use monochrome here, we used only one channel as an input
         # For four layers we had ~14M parameters, too many
         # For Three layers we hopefully have few parameters to optimize
-        self.down_convolution_1 = double_convolution(1, 64)
-        self.down_convolution_2 = double_convolution(64, 128)
-        self.down_convolution_3 = double_convolution(128, 256)
+        self.down_convolution_1 = double_convolution(1, 64, dropout=dropout)
+        self.down_convolution_2 = double_convolution(64, 128, dropout=dropout)
+        self.down_convolution_3 = double_convolution(128, 256, dropout=dropout)
 
         # Expanding path.
         self.up_transpose_1 = nn.ConvTranspose2d(
             in_channels=256, out_channels=128,
             kernel_size=2,
             stride=2)
-        self.up_convolution_1 = double_convolution(256, 128)
+        self.up_convolution_1 = double_convolution(256, 128, dropout=dropout)
 
         self.up_transpose_2 = nn.ConvTranspose2d(
             in_channels=128, out_channels=64,
             kernel_size=2,
             stride=2)
-        self.up_convolution_2 = double_convolution(128, 64)
+        self.up_convolution_2 = double_convolution(128, 64, dropout=dropout)
 
         # output => `out_channels` as per the number of classes.
         self.out = nn.Conv2d(

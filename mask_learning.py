@@ -20,6 +20,7 @@ from loss_utils import KDE_loss3D, jaccard_coeff
 from beam_profile_gen import phase_gen
 import scipy.io as sio
 
+# nohup python mask_learning.py &> ./logs/$(date +'%Y%m%d-%H%M%S').txt &
 def list_to_range(lst):
     if len(lst) == 1:
         return range(lst[0])
@@ -28,8 +29,8 @@ def list_to_range(lst):
     elif len(lst) == 3:
         return range(lst[0], lst[1], lst[2])
 
-#This part generates the beads location for the training and validation sets
-def gen_data(config):
+# This part generates the beads location for the training and validation sets
+def gen_data(config, res_dir):
     ntrain = config['ntrain']
     nvalid = config['nvalid']
     batch_size_gen = config['batch_size_gen']
@@ -37,8 +38,8 @@ def gen_data(config):
     particle_spatial_range_z = list_to_range(config['particle_spatial_range_z'])
     num_particles_range = config['num_particles_range']
     random_seed = config['random_seed']
-    device = config['device']
-    path_train = config['path_train']
+    #device = config['device']
+    #path_train = config['path_train']
     
 
     torch.backends.cudnn.benchmark = True
@@ -47,8 +48,8 @@ def gen_data(config):
     torch.manual_seed(random_seed)
     np.random.seed(random_seed//2 + 1)
 
-    if not (os.path.isdir(path_train)):
-        os.mkdir(path_train)
+    #if not (os.path.isdir(path_train)):
+    #    os.mkdir(path_train)
 
     # print status
     print('=' * 50)
@@ -77,9 +78,12 @@ def gen_data(config):
         labels_dict[str(i + ntrain_batches)] = {'xyz': xyz, 'N': Nphotons}
         print('Validation Example [%d / %d]' % (i + 1, nvalid_batches))
 
-    path_labels = os.path.join(path_train,'labels.pickle')
+    path_labels = os.path.join(res_dir,'labels.pickle')
     with open(path_labels, 'wb') as handle:
         pickle.dump(labels_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # Save labels_dict in .mat format as well
+    path_labels_mat = os.path.join(res_dir, 'labels.mat')
+    sio.savemat(path_labels_mat, labels_dict)
 
 # AG this part is generating the images of the defocused images at different planes 
 # the code will save these images as template for future use.
@@ -113,7 +117,7 @@ def beads_img(config):
 
 
         
-def learn_mask(config):
+def learn_mask(config,res_dir):
 
     #Unpack parameters
     ntrain = config['ntrain']
@@ -152,10 +156,7 @@ def learn_mask(config):
     #if not (os.path.isdir(path_save)):
     #    os.mkdir(path_save)
     
-    # set results folder
-    model_name = '{}_{}'.format('phase_model_', datetime.now().strftime("%Y%m%d-%H%M%S"))
-    res_dir = os.path.join('results', model_name)
-    makedirs(res_dir)
+    
 
     # Save dictionary to a text file
     with open(os.path.join(res_dir, 'config.yaml'), 'w') as file:
@@ -342,20 +343,25 @@ if __name__ == '__main__':
         "num_classes": 1
     }
     """
-
-    #Generate the data for the training
-    gen_data(config)
+    # set results folder
+    model_name = f"phase_model_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    res_dir = os.path.join('results', model_name)
+    makedirs(res_dir)
+    
+    # Generate the data for the training
+    gen_data(config,res_dir)
     # pre generate defocus beads - can only run once
-    beads_img(config)
-    #learn the mask
-    learn_mask(config)
-    
+    if not os.path.isdir(config['data_path']):
+        beads_img(config)
+    # learn the mask
+    learn_mask(config,res_dir)
 
 
-    
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
+

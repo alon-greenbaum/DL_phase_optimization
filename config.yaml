@@ -18,10 +18,10 @@ psf_edge_remove: 15
 psf_keep_radius: 15
 numerical_aperture: 0.6  # Relates to the resolution of the detection objective
 bead_radius: 1.0  # pixels 1.0 default, can change to make larger beads
-random_seed: 99
+random_seed: 1234
 initial_learning_rate: 0.01
 batch_size: 1
-max_epochs: 200
+max_epochs: 20
 mask_phase_pixels: 500
 data_path: "beads_img_defocus"
 path_save: "data_mask_learning"
@@ -41,6 +41,6 @@ ratio_input_output_image_size: 1  # default with Unet 1, with ResNet 4
 z_range_cost_function: 1 # 
 use_unet: true
 num_classes: 1
-lens_approach: "fourier" # "fourier" or "fresnel"
+lens_approach: "fresnel" # "fourier" or "fresnel"
 power_2: 1000 # pad to this power for fourier transform
-bfp_dir: "bfp_gaussian_beam"
+bfp_dir: "output_layer_imgs"
