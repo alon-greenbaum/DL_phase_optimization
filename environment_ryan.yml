@@ -24,3 +24,4 @@ dependencies:
     - torchvision
     - tensorboard
     - tqdm
+    - hdf5storage

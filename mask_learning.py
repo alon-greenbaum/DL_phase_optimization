@@ -19,6 +19,7 @@ from cnn_utils_unet import OpticsDesignUnet
 from loss_utils import KDE_loss3D, jaccard_coeff
 from beam_profile_gen import phase_gen
 import scipy.io as sio
+import hdf5storage  # new import for saving MATLAB 7.3 files
 
 # nohup python mask_learning.py &> ./logs/$(date +'%Y%m%d-%H%M%S').txt &
 def list_to_range(lst):
@@ -81,9 +82,9 @@ def gen_data(config, res_dir):
     path_labels = os.path.join(res_dir,'labels.pickle')
     with open(path_labels, 'wb') as handle:
         pickle.dump(labels_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    # Save labels_dict in .mat format as well
+    # Save labels_dict in .mat format as MATLAB 7.3
     path_labels_mat = os.path.join(res_dir, 'labels.mat')
-    sio.savemat(path_labels_mat, labels_dict)
+    hdf5storage.savemat(path_labels_mat, labels_dict, matlab_ver='7.3')
 
 # AG this part is generating the images of the defocused images at different planes 
 # the code will save these images as template for future use.
@@ -152,7 +153,7 @@ def learn_mask(config,res_dir):
     mask_param = nn.Parameter(mask_phase)
     mask_param.requires_grad_()
 
-    # I dont know what goes here so i comment out - ryan?
+    # I don't know what goes in here so I commented it out - ryan
     #if not (os.path.isdir(path_save)):
     #    os.mkdir(path_save)
     

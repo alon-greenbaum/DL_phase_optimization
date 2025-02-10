@@ -314,7 +314,7 @@ class PhysicalLayer(nn.Module):
         else:
             raise ValueError('lens approach not supported')
             
-        if self.counter % 50 == 0 :    
+        if self.counter % 50 == 0 and self.training:    
             save_output_layer(output_layer, self.bfp_dir, self.lens_approach, self.counter, self.datetime, self.config)
         self.counter += 1
         
@@ -338,7 +338,7 @@ class PhysicalLayer(nn.Module):
                 U1 = torch.fft.ifft2(
                     torch.fft.ifftshift(
                         torch.fft.fftshift(torch.fft.fft2(output_layer)) 
-                        * torch.exp(1j * self.k * self.gamma_cust * x * 1e-6)
+                        * torch.exp(1j * self.k * self.gamma_cust * x * self.px)
                         )
                     ) # should this 1e-6 be self.px?
                 U1 = torch.real(U1 * torch.conj(U1))
