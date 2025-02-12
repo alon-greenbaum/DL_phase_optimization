@@ -38,7 +38,6 @@ def gen_data(config, res_dir):
     particle_spatial_range_xy = list_to_range(config['particle_spatial_range_xy'])
     particle_spatial_range_z = list_to_range(config['particle_spatial_range_z'])
     num_particles_range = config['num_particles_range']
-    random_seed = config['random_seed']
     #device = config['device']
     #path_train = config['path_train']
     
@@ -125,7 +124,7 @@ def learn_mask(config,res_dir):
     ntrain = config['ntrain']
     nvalid = config['nvalid']
     batch_size_gen = config['batch_size_gen']
-    random_seed = config['random_seed']
+    
     initial_learning_rate = config['initial_learning_rate']
     batch_size = config['batch_size']
     max_epochs = config['max_epochs']
@@ -139,10 +138,6 @@ def learn_mask(config,res_dir):
     device = config['device']
     use_unet = config['use_unet']
 
-
-    #Set the random seed
-    torch.manual_seed(random_seed)
-    np.random.seed(random_seed)
     
     # train on GPU if available
     #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -294,10 +289,16 @@ def learn_mask(config,res_dir):
 
 if __name__ == '__main__':
 
+    
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     config = load_config("config.yaml")
     config['device'] = device
+    
+    #Set the random seed
+    random_seed = config['random_seed']
+    torch.manual_seed(random_seed)
+    np.random.seed(random_seed)
     
     """
     config = {

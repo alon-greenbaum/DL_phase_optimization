@@ -46,8 +46,8 @@ def complex_to_tensor(phases_np):
 # Define a batch data generator for training and testing
 def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, particle_spatial_range_z, seed=None):
     # if we're testing then seed the random generator
-    if seed is not None:
-        np.random.seed(seed)
+    #if seed is not None:
+    #    np.random.seed(seed)
 
     # upper and lower limits for the number fo emitters
     num_particles = np.random.randint(num_particles_range[0], num_particles_range[1], 1).item()
