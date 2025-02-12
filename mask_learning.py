@@ -170,7 +170,7 @@ def learn_mask(config,res_dir):
 
 
     # load all locations pickle file, to generate the labels go to Generate data folder
-    path_pickle = os.path.join(path_train, 'labels.pickle')
+    path_pickle = os.path.join(res_dir, 'labels.pickle')
     with open(path_pickle, 'rb') as handle:
         labels = pickle.load(handle)
     
@@ -350,7 +350,7 @@ if __name__ == '__main__':
     """
     # set results folder
     model_name = f"phase_model_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    res_dir = os.path.join('results', model_name)
+    res_dir = os.path.join('training_results', model_name)
     makedirs(res_dir)
     
     # Generate the data for the training
