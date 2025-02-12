@@ -201,6 +201,7 @@ class PhysicalLayer(nn.Module):
         [XX, YY] = np.meshgrid(xx, yy)
         XX = XX * self.px
         YY = YY * self.px
+
         
         # initialize phase mask
         self.A = 1 * np.exp(-(np.square(X) + np.square(Y)) / (2 * laser_beam_FWHC ** 2))
@@ -358,7 +359,11 @@ class PhysicalLayer(nn.Module):
         # need to check the normalization here
         imgs3D = imgs3D / self.max_intensity
 
-        # adds noise and normalize again
-        result_noisy = self.noise(imgs3D)
-        result_noisy01 = self.norm01(result_noisy)
-        return result_noisy01
+        # Conditionally bypass noise addition during inference if skip_noise flag is set
+        if self.config.get('skip_noise', False) and not self.training:
+            result = self.norm01(imgs3D)
+            return result
+        else:
+            result_noisy = self.noise(imgs3D)
+            result_noisy01 = self.norm01(result_noisy)
+            return result_noisy01

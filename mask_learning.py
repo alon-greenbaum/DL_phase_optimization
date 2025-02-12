@@ -45,9 +45,10 @@ def gen_data(config, res_dir):
 
     torch.backends.cudnn.benchmark = True
 
-    # set random seed for repeatability
-    torch.manual_seed(random_seed)
-    np.random.seed(random_seed//2 + 1)
+    # set random seed for repeatability 
+    # seed already set in learn mask function - ryan
+    #torch.manual_seed(random_seed)
+    #np.random.seed(random_seed//2 + 1)
 
     #if not (os.path.isdir(path_train)):
     #    os.mkdir(path_train)

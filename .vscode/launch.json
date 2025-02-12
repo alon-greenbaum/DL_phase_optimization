@@ -1,0 +1,28 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: mask_inference with fixed args",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/mask_inference.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--input_dir",
+                "./results/phase_model_20250210-102051/",
+                "--epoch",
+                "200",
+                "--res_dir",
+                "inference_results",
+                "--num_inferences",
+                "1",
+                "--lens_approach",
+                "",
+                "--empty_mask",
+                "--paper_mask",
+                "example_optimized_phase.tiff",
+                "--no_noise",
+            ]
+        }
+    ]
+}
