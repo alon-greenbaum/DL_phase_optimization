@@ -9,7 +9,7 @@
             "console": "integratedTerminal",
             "args": [
                 "--input_dir",
-                "./results/phase_model_20250210-102051/",
+                "./results/phase_model_20250212-001628/",
                 "--epoch",
                 "200",
                 "--res_dir",
@@ -17,7 +17,7 @@
                 "--num_inferences",
                 "1",
                 "--lens_approach",
-                "",
+                "fresnel",
                 "--empty_mask",
                 "--paper_mask",
                 "example_optimized_phase.tiff",

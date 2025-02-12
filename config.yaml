@@ -38,9 +38,10 @@ ratio_input_output_image_size: 1  # default with Unet 1, with ResNet 4
 # How many planes to consider as right classification, besides the plane
 # in focus, if 1 the -1, in focus, and +1 plane will be considered correct
 # if 0, only the infocus plane is considered, default value 1
-z_range_cost_function: 1 # 
+z_range_cost_function: 0 # default 1
 use_unet: true
 num_classes: 1
 lens_approach: "fresnel" # "fourier" or "fresnel"
 power_2: 1000 # pad to this power for fourier transform
-bfp_dir: "output_layer_imgs"
+bfp_dir: "back_focal_plane"
+dropout: 0.0

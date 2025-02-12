@@ -160,10 +160,13 @@ def learn_mask(config,res_dir):
     
     
 
-    # Save dictionary to a text file
+    # Save dictionary to a text file ensuring key 'px' is saved as a float
     with open(os.path.join(res_dir, 'config.yaml'), 'w') as file:
         for key, value in config.items():
-            file.write(f'{key}: {value}\n')
+            if key == "px":
+                file.write(f"{key}: {float(value)}\n")
+            else:
+                file.write(f"{key}: {value}\n")
 
 
     # load all locations pickle file, to generate the labels go to Generate data folder
