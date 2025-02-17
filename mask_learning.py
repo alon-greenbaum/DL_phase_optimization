@@ -284,8 +284,8 @@ def learn_mask(config,res_dir):
         np.savetxt(os.path.join(res_dir,'train_losses.txt'),train_losses,delimiter=',')
         if epoch % 10 == 0:
             torch.save(cnn.state_dict(),os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
-        if epoch % 5 == 0:
-            savePhaseMask(mask_param,batch_ind,epoch,res_dir)
+        
+        savePhaseMask(mask_param,batch_ind,epoch,res_dir)
     return labels
 
 if __name__ == '__main__':

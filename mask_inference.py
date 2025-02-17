@@ -10,6 +10,7 @@ from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid
 from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
 from physics_utils import PhysicalLayer  # physical model import
+from beam_profile_gen import beam_profile_focus, beam_section, phase_mask_gen
 
 # Parse arguments
 def main():
@@ -25,6 +26,8 @@ def main():
     parser.add_argument("--no_noise", action="store_true", help="Disable noise in PhysicalLayer inference")
     # Optional CNN model path, will be auto-determined if empty
     parser.add_argument("--model_path", type=str, default="", help="Optional: Path to the CNN pretrained model checkpoint")
+    parser.add_argument("--beam_3d_sections", type=str, default="beam_3d_sections", help="Optional: Path to the beam 3d sections file")
+    parser.add_argument("--generate_beam_profile", action="store_true", help="Generate beam profile for the input mask (default: off)")
     args = parser.parse_args()
 
     # Automatically determine CNN model path if not provided
@@ -100,6 +103,25 @@ def main():
     with open(config_output_path, "w") as f:
         for key, value in config.items():
             f.write(f"{key}: {value}\n")
+    
+    # --- New: Optionally generate and save beam profile for the input mask ---
+    if args.generate_beam_profile:
+        input_mask_path = os.path.join(out_dir, "input_mask.tiff")
+        skimage.io.imsave(input_mask_path, mask_np)
+        print(f"Saved input mask to {input_mask_path}")
+    
+        beam_3d_sections_filepath = os.path.join(out_dir, args.beam_3d_sections)
+        if not os.path.exists(beam_3d_sections_filepath):
+            os.makedirs(beam_3d_sections_filepath)
+        mask_np_for_beam = mask_tensor.cpu().numpy()
+        mask_real = phase_mask_gen()
+        mask_param_for_beam = mask_real*np.exp(1j*mask_np_for_beam)
+        beam_focused = beam_profile_focus(mask_param_for_beam)
+        beam_profile = beam_section(beam_focused, beam_3d_sections_filepath)
+        beam_profile_out_path = os.path.join(out_dir, "beam_profile.tiff")
+        skimage.io.imsave(beam_profile_out_path, (beam_profile/1e6).astype(np.uint16))
+        print(f"Saved beam profile for input mask to {beam_profile_out_path}")
+    # --- End new code ---
 
     # Run inference for each selected key
     for key in selected_keys:

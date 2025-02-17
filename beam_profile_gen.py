@@ -105,16 +105,15 @@ def phase_gen():
     return np.tile(line,(500,1)) 
 
 # used to generate beam profile in 3D space
-def beam_section(layer):
+def beam_section(layer,output_folder):
     profile = np.zeros((201,101))
-    start = 1
     x_dist = range(0,201,1)
     for index in range(len(x_dist)):
         print(index)
         pro_x = angularSpec(layer,x_dist[index]*(1e-6))
         #return pro_x.shape
         profile[index] = pro_x[249-50:249+51,249]
-        skimage.io.imsave('3D_folder/' + str(index) + '.tiff', (pro_x/1e7).astype('uint16'))
+        skimage.io.imsave(os.path.join(output_folder,str(index) + '.tiff'), (pro_x/1e7).astype('uint16'))
     return profile
 
 
@@ -123,7 +122,7 @@ if __name__ == '__main__':
     # generate_psf()
     mask_real = phase_mask_gen()
     #mask_real = skimage.io.imread('mask_real_epoch_178_1600.tiff')
-    skimage.io.imsave('mask.tiff',mask_real.astype('float32'))
+    #skimage.io.imsave('mask.tiff',mask_real.astype('float32'))
     
 
     #sys.exit()
