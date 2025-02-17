@@ -277,14 +277,15 @@ def learn_mask(config,res_dir):
                 print('Epoch [%d/%d], Iter [%d/%d], Loss: %.4f\n' % (epoch+1,
                       num_epochs, batch_ind+1, steps_per_epoch, loss.item()))
                 
-                if batch_ind % 1000 == 0:
-                    savePhaseMask(mask_param,batch_ind,epoch,res_dir)
+                #if batch_ind % 1000 == 0:
+                #    savePhaseMask(mask_param,batch_ind,epoch,res_dir)
                 
         train_losses.append(train_loss)
         np.savetxt(os.path.join(res_dir,'train_losses.txt'),train_losses,delimiter=',')
         if epoch % 10 == 0:
             torch.save(cnn.state_dict(),os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
-        
+        if epoch % 5 == 0:
+            savePhaseMask(mask_param,batch_ind,epoch,res_dir)
     return labels
 
 if __name__ == '__main__':
