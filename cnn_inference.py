@@ -1,32 +1,19 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Oct 31 12:11:51 2022
-
-@author: ische
-"""
-import time
 import numpy as np
-# import scipy.integrate
-# import scipy.signal
-# import scipy.special
 import skimage.io
-import random
 import os
-
-
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
-from torch.optim import Adam
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 import pickle
 from psf_gen import apply_blur_kernel
 from data_utils import PhasesOnlineDataset, savePhaseMask
 from cnn_utils import OpticsDesignCNN
 from loss_utils import KDE_loss3D, jaccard_coeff
 from beam_profile_gen import phase_gen, phase_mask_gen
-import scipy.io as sio
-
+import argparse
+from datetime import datetime
+from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid
+from cnn_utils_unet import OpticsDesignUnet
 
 N = 500 # grid size
 px = 1e-6 # pixel size (um)
@@ -40,84 +27,109 @@ numerical_aperture = 0.6
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+def main():
+    parser = argparse.ArgumentParser(description="Inference script for OpticsDesign model.")
+    parser.add_argument("--input_dir", type=str, required=True, help="Directory containing config.yaml and labels.pickle")
+    # Removed required model_path; it will be computed automatically.
+    parser.add_argument("--model_path", type=str, default="", help="Optional: Path to the pretrained model checkpoint")
+    parser.add_argument("--epoch", type=int, required=True, help="Desired epoch for the model (closest available at x*10+1)")
+    parser.add_argument("--res_dir", type=str, default="results", help="Directory to save inference outputs")
+    parser.add_argument("--device", type=str, default="cuda:0", help="Device to run on")
+    parser.add_argument("--num_inferences", type=int, default=1, help="Number of samples for inference (if 0, use all keys)")
+    args = parser.parse_args()
+    
+    # Automatically determine model path if not provided
+    if not args.model_path:
+        # x is an integer that begins at 0 and increases by 1.
+        x0 = int((args.epoch - 1) / 10)
+        candidate_low = x0 * 10 + 1
+        candidate_high = (x0 + 1) * 10 + 1
+        if abs(args.epoch - candidate_low) <= abs(candidate_high - args.epoch):
+            chosen_epoch = candidate_low
+        else:
+            chosen_epoch = candidate_high
+        model_file = f"net_{chosen_epoch - 1}.pt"
+        args.model_path = os.path.join(args.input_dir, model_file)
+        print(f"Automatically using model: {args.model_path}")
+    
+    # Load configuration and set device
+    config_path = os.path.join(args.input_dir, "config.yaml")
+    config = load_config(config_path)
+    config['device'] = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    config['inference_epoch'] = args.epoch
+
+    # Load mask from tiff file (similar to physics_inference.py)
+    mask_filename = f"mask_phase_epoch_{args.epoch-1}_0.tiff"
+    mask_path = os.path.join(args.input_dir, mask_filename)
+    mask_np = skimage.io.imread(mask_path)
+    mask_tensor = torch.from_numpy(mask_np).type(torch.FloatTensor).to(config['device'])
+    mask_param = torch.nn.Parameter(mask_tensor, requires_grad=False)
+    
+    # Load labels
+    labels_path = os.path.join(args.input_dir, "labels.pickle")
+    with open(labels_path, 'rb') as f:
+        labels_dict = pickle.load(f)
+    
+    all_keys = sorted(labels_dict.keys(), key=lambda x: int(x))  # assuming keys are numeric strings
+    if args.num_inferences > 0 and args.num_inferences < len(all_keys):
+        indices = np.linspace(0, len(all_keys) - 1, args.num_inferences).astype(int)
+        selected_keys = [all_keys[i] for i in indices]
+    else:
+        selected_keys = all_keys
+    
+    # Instantiate model based on configuration
+    if config.get("use_unet", False):
+        model = OpticsDesignUnet(config)
+        print("Instantiated OpticsDesignUnet")
+    else:
+        model = OpticsDesignCNN(config)
+        print("Instantiated OpticsDesignCNN")
+    model.to(config['device'])
+    
+    # Load the pretrained model checkpoint
+    model.load_state_dict(torch.load(args.model_path, map_location=config['device']))
+    model.eval()
+    
+    # Create output directory for inference results using current datetime.
+    dt_str = datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_dir = os.path.join(args.res_dir, dt_str)
+    makedirs(out_dir)
+    
+    # Save updated configuration in out_dir, including inference epoch.
+    config_output_path = os.path.join(out_dir, "config.yaml")
+    with open(config_output_path, "w") as f:
+        for key, value in config.items():
+            f.write(f"{key}: {value}\n")
+    
+    # Run inference and save outputs
+    for key in selected_keys:
+        data = labels_dict[key]
+        xyz_np = data['xyz']
+        # Convert xyz to tensor on proper device
+        xyz = torch.tensor(xyz_np, dtype=torch.float32).to(config['device'])
+        Nphotons = torch.tensor(data['N'], dtype=torch.float32).to(config['device'])
+        
+        with torch.no_grad():
+            # Updated: pass mask_param as the first argument to model
+            outputs = model(mask_param, xyz, Nphotons)
+        out_img = outputs.detach().cpu().squeeze().numpy()
+        out_path = os.path.join(out_dir, f"inference_{key}.tiff")
+        skimage.io.imsave(out_path, out_img)
+        print(f"Saved inference for key {key} to {out_path}")
+        
+        # Save ground truth label from boolean grid
+        gt_img = batch_xyz_to_boolean_grid(xyz_np, config)
+        if torch.is_tensor(gt_img):
+            gt_img = gt_img.detach().cpu().numpy()
+        if gt_img.dtype == np.bool_:
+            gt_img = (gt_img.astype(np.uint8)) * 255
+        gt_path = os.path.join(out_dir, f"ground_truth_{key}.tiff")
+        skimage.io.imsave(gt_path, gt_img)
+        print(f"Saved ground truth for key {key} to {gt_path}")
+
+if __name__ == "__main__":
+    main()
 
 
 
 
-mask_phase = phase_gen()
-mask_phase = torch.from_numpy(mask_phase).type(torch.FloatTensor).to(device)
-#mask_param = mask_real + 1j*mask_phase
-
-mask_param = nn.Parameter(mask_phase)
-
-if __name__ == '__main__':
-    
-    path_save = 'data_mask_learning/'
-    path_train = 'traininglocations/'
-    batch_size = 1
-    max_epochs = 10
-    ntrain = 10000
-    nvalid = 1000
-    initial_learning_rate = 0.0002
-    if not (os.path.isdir(path_save)):
-        os.mkdir(path_save)
-    
-    # load all locations pickle file
-    path_pickle = path_train + 'labels.pickle'
-    with open(path_pickle, 'rb') as handle:
-        labels = pickle.load(handle)
-    
-    # parameters for data loaders batch size is 1 because examples are generated 16 at a time
-    params_train = {'batch_size': 1, 'shuffle': False}
-    params_valid = {'batch_size': 1, 'shuffle': False}
-    batch_size_gen = 2
-    ntrain_batches = int(ntrain/batch_size_gen)
-    nvalid_batches = int(nvalid/batch_size_gen)
-    steps_per_epoch = ntrain_batches
-    # partition built in simulation
-    ind_all = np.arange(0, ntrain_batches + nvalid_batches, 1)
-    list_all = ind_all.tolist()
-    list_IDs = [str(i) for i in list_all]
-    train_IDs = list_IDs[:ntrain_batches]
-    valid_IDs = list_IDs[ntrain_batches:]
-    partition = {'train': train_IDs, 'valid': valid_IDs}
-    
-    training_set = PhasesOnlineDataset(partition['train'],labels)
-    training_generator = DataLoader(training_set, **params_train)
-    
-    cnn = OpticsDesignCNN()
-    cnn.to(device)
-    #model_path = './results/phase_model__20221107-161136_beads_120_to_130/net_195.pt'
-    model_path = './results/model_fig3/net_100.pt'
-    
-    cnn.load_state_dict(torch.load(model_path))
-    mask_real = phase_mask_gen()
-    mask_phase = skimage.io.imread('./results/model_fig3/mask_phase_epoch_100_0.tiff')
-    #mask_phase = phase_gen()
-    mask_phase = torch.from_numpy(mask_phase).type(torch.FloatTensor).to(device)
-    mask_param = nn.Parameter(mask_phase)
-    mask_param.requires_grad_()
-    with torch.no_grad():
-        cnn.eval()
-        for batch_ind, (xyz_np, Nphotons, targets) in enumerate(training_generator):
-            xyz_np = xyz_np.to(device)
-            xyz_np = xyz_np.squeeze()
-            targets = targets.to(device)
-            targets = targets.squeeze(0)
-            outputs = cnn(mask_param,xyz_np,Nphotons)
-            print(outputs.shape)
-            print(targets.shape)
-            
-            img = outputs[0,0,:,:]
-            img_np = img.detach().cpu().numpy()
-            skimage.io.imsave('output.tiff',img_np)
-            tar = targets[0,0,:,:]
-            tar = tar.detach().cpu().numpy()
-            skimage.io.imsave('label.tiff',tar)
-            break
-    #os._exit()
-    
-    
-    
-    
-    
