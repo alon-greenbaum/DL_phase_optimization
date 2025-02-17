@@ -105,9 +105,9 @@ def phase_gen():
     return np.tile(line,(500,1)) 
 
 # used to generate beam profile in 3D space
-def beam_section(layer,output_folder):
-    profile = np.zeros((201,101))
-    x_dist = range(0,201,1)
+def beam_section(layer,output_folder,z_min,z_max):
+    profile = np.zeros((z_max-z_min,101))
+    x_dist = range(z_min,z_max,1)
     for index in range(len(x_dist)):
         print(index)
         pro_x = angularSpec(layer,x_dist[index]*(1e-6))

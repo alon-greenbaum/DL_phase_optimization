@@ -15,6 +15,9 @@ def main():
     parser.add_argument("--mask_filepath", type=str, default="", help="Optional: Full filepath to input mask. Overrides input_dir and epoch if provided.")
     # New optional argument for dummy mask generation
     parser.add_argument("--dummy_mask", action="store_true", help="Use a 500x500 mask of zeros instead of reading an input mask")
+    # New optional arguments for z_min and z_max:
+    parser.add_argument("--z_min", type=int, default=-201, help="Minimum z value for beam section generation")
+    parser.add_argument("--z_max", type=int, default=201, help="Maximum z value for beam section generation")
     args = parser.parse_args()
     
     # Determine mask path or create dummy mask:
@@ -45,19 +48,35 @@ def main():
     beam_sections_dir = os.path.join(out_dir, args.beam_3d_sections)
     os.makedirs(beam_sections_dir, exist_ok=True)
     
+    # --- New: Save configuration including z_min and z_max ---
+    config = {
+        "input_dir": args.input_dir,
+        "epoch": args.epoch,
+        "mask_filepath": args.mask_filepath,
+        "dummy_mask": args.dummy_mask,
+        "z_min": args.z_min,
+        "z_max": args.z_max,
+        "beam_3d_sections": args.beam_3d_sections
+    }
+    config_output_path = os.path.join(out_dir, "config.yaml")
+    with open(config_output_path, "w") as f:
+        for key, value in config.items():
+            f.write(f"{key}: {value}\n")
+    # --- End new code ---
+    
     # --- New: Save the mask used to create the beam profile ---
     mask_used_path = os.path.join(out_dir, "input_mask.tiff")
     skimage.io.imsave(mask_used_path, mask_np)
     print(f"Saved input mask used to {mask_used_path}")
     # --- End new code ---
     
-    # Compute beam section profiles and save slices in the subfolder
-    beam_profile = beam_section(beam_focused, beam_sections_dir)
+    # Compute beam section profiles using provided z_min and z_max:
+    beam_profile = beam_section(beam_focused, beam_sections_dir, args.z_min, args.z_max)
     
     # Save overall beam profile as a TIFF file
     beam_profile_out_path = os.path.join(out_dir, "beam_profile.tiff")
-    # Adjust scaling if necessary; here we save as uint16 for visualization
-    skimage.io.imsave(beam_profile_out_path, (beam_profile/1e6).astype(np.uint16))
+    # Transpose and adjust scaling; save as uint16 for visualization
+    skimage.io.imsave(beam_profile_out_path, (beam_profile.T/1e6).astype(np.uint16))
     print(f"Saved beam profile to {beam_profile_out_path}")
     print(f"Beam section slices saved in {beam_sections_dir}")
 
