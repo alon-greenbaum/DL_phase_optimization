@@ -9,18 +9,19 @@
             "console": "integratedTerminal",
             "args": [
                 "--input_dir",
-                "./training_results/phase_model_20250212-123823/",
+                "./training_results/phase_model_20250219-171134/",
                 "--epoch",
-                "191",
+                "101",
                 "--res_dir",
                 "inference_results",
                 "--num_inferences",
-                "1",
+                "10",
                 "--lens_approach",
                 "fresnel",
                 "--empty_mask",
                 "--paper_mask",
                 "example_optimized_phase.tiff",
+                "--img_at_end_epoch"
                 //"--no_noise",
             ]
         },
@@ -39,6 +40,26 @@
                 "cnn_inference_results",
                 "--num_inferences",
                 "10",
+            ]
+        },
+        {
+            "name": "Beam profile with fixed args",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/beam_profile_ryan.py",
+            "console": "integratedTerminal",
+            "args": [
+                //"--input_dir",
+                //"./training_results/phase_model_20250219-171134/",
+                //"--epoch",
+                //"101",
+                "--mask_filepath",
+                //"training_results/phase_model_20250219-171134/mask_phase_epoch_100_499.tiff",
+                "example_optimized_phase.tiff",
+                "--x_min",
+                "-200",
+                "--x_max",
+                "200",
             ]
         }
     ]

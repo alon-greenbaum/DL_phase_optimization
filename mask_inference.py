@@ -28,6 +28,7 @@ def main():
     parser.add_argument("--model_path", type=str, default="", help="Optional: Path to the CNN pretrained model checkpoint")
     parser.add_argument("--beam_3d_sections", type=str, default="beam_3d_sections", help="Optional: Path to the beam 3d sections file")
     parser.add_argument("--generate_beam_profile", action="store_true", help="Generate beam profile for the input mask (default: off)")
+    parser.add_argument("--img_at_end_epoch", action="store_true", help="Use the mask image at the end of the epoch (default: off)")
     args = parser.parse_args()
 
     # Automatically determine CNN model path if not provided
@@ -53,9 +54,16 @@ def main():
         config['lens_approach'] = args.lens_approach
     if args.no_noise:
         config['skip_noise'] = True
+        
+    if type(config['px']) == str:
+        config['px'] = float(config['px'])
 
     # Load mask from tiff file (for both models)
-    mask_filename = f"mask_phase_epoch_{args.epoch-1}_0.tiff"
+    if args.img_at_end_epoch:
+        mask_filename = f"mask_phase_epoch_{args.epoch-1}_499.tiff"
+    else:
+        mask_filename = f"mask_phase_epoch_{args.epoch-1}_0.tiff"
+        
     mask_path = os.path.join(args.input_dir, mask_filename)
     mask_np = skimage.io.imread(mask_path)
     mask_tensor = torch.from_numpy(mask_np).type(torch.FloatTensor).to(config['device'])

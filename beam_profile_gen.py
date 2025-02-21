@@ -105,14 +105,14 @@ def phase_gen():
     return np.tile(line,(500,1)) 
 
 # used to generate beam profile in 3D space
-def beam_section(layer,output_folder,z_min,z_max):
-    profile = np.zeros((z_max-z_min,101))
-    x_dist = range(z_min,z_max,1)
+def beam_section(layer,output_folder,x_min,x_max,y_min,y_max):
+    profile = np.zeros((x_max-x_min,101))
+    x_dist = range(x_min,x_max,1)
     for index in range(len(x_dist)):
         print(index)
-        pro_x = angularSpec(layer,x_dist[index]*(1e-6))
+        pro_x = angularSpec(layer,x_dist[index]*px) # beam in [z,y] plane (camera coordinates)
         #return pro_x.shape
-        profile[index] = pro_x[249-50:249+51,249]
+        profile[index] = pro_x[pro_x.shape[0]//2,pro_x.shape[1]//2+y_min-1:pro_x.shape[1]//2+y_max] # [z,y]
         skimage.io.imsave(os.path.join(output_folder,str(index) + '.tiff'), (pro_x/1e7).astype('uint16'))
     return profile
 

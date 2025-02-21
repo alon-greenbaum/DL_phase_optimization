@@ -45,9 +45,9 @@ def gen_data(config, res_dir):
     torch.backends.cudnn.benchmark = True
 
     # set random seed for repeatability 
-    # seed already set in learn mask function - ryan
+    # seed already set in main function - ryan
     #torch.manual_seed(random_seed)
-    #np.random.seed(random_seed//2 + 1)
+    #np.random.seed(random_seed)
 
     #if not (os.path.isdir(path_train)):
     #    os.mkdir(path_train)
@@ -296,10 +296,11 @@ if __name__ == '__main__':
     config = load_config("config.yaml")
     config['device'] = device
     
-    #Set the random seed
+    # Set the random seed
     random_seed = config['random_seed']
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
+    random.seed(random_seed) # ryan added for gen data
     
     """
     config = {

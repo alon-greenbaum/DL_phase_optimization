@@ -16,8 +16,10 @@ def main():
     # New optional argument for dummy mask generation
     parser.add_argument("--dummy_mask", action="store_true", help="Use a 500x500 mask of zeros instead of reading an input mask")
     # New optional arguments for z_min and z_max:
-    parser.add_argument("--z_min", type=int, default=-201, help="Minimum z value for beam section generation")
-    parser.add_argument("--z_max", type=int, default=201, help="Maximum z value for beam section generation")
+    parser.add_argument("--x_min", type=int, default=-201, help="Minimum z value for beam section generation")
+    parser.add_argument("--x_max", type=int, default=201, help="Maximum z value for beam section generation")
+    parser.add_argument("--y_min", type=int, default=-50, help="Minimum y value for beam section generation")
+    parser.add_argument("--y_max", type=int, default=50, help="Maximum y value for beam section generation")
     args = parser.parse_args()
     
     # Determine mask path or create dummy mask:
@@ -54,8 +56,10 @@ def main():
         "epoch": args.epoch,
         "mask_filepath": args.mask_filepath,
         "dummy_mask": args.dummy_mask,
-        "z_min": args.z_min,
-        "z_max": args.z_max,
+        "x_min": args.x_min,
+        "x_max": args.x_max,
+        "y_min": args.y_min,
+        "y_max": args.y_max,
         "beam_3d_sections": args.beam_3d_sections
     }
     config_output_path = os.path.join(out_dir, "config.yaml")
@@ -71,7 +75,7 @@ def main():
     # --- End new code ---
     
     # Compute beam section profiles using provided z_min and z_max:
-    beam_profile = beam_section(beam_focused, beam_sections_dir, args.z_min, args.z_max)
+    beam_profile = beam_section(beam_focused, beam_sections_dir, args.x_min, args.x_max,args.y_min,args.y_max)
     
     # Save overall beam profile as a TIFF file
     beam_profile_out_path = os.path.join(out_dir, "beam_profile.tiff")
