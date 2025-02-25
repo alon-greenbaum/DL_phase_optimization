@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Physics_inference with fixed args",
+            "name": "All Inference with fixed args",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/mask_inference.py",
@@ -23,6 +23,30 @@
                 "example_optimized_phase.tiff",
                 "--img_at_end_epoch"
                 //"--no_noise",
+            ]
+        },
+        {
+            "name": "Physics_inference with fixed args",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/physics_inference.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--input_dir",
+                "training_results/phase_model_20250212-123823",
+                "--epoch",
+                "1",
+                "--res_dir",
+                "physics_inference_results",
+                "--num_inferences",
+                "1",
+                "--lens_approach",
+                "fourier",
+                "--empty_mask",
+                //"--paper_mask",
+                //"example_optimized_phase.tiff",
+                //"--img_at_end_epoch"
+                "--no_noise",
             ]
         },
         {

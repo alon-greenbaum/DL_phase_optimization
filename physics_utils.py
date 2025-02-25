@@ -178,11 +178,11 @@ class PhysicalLayer(nn.Module):
         self.lens_approach = config['lens_approach']
         self.device = device
         self.psf_keep_radius = psf_keep_radius
-        self.N = N #the size of the FOV in pixels
+        self.N = N # the size of the FOV in pixels
         self.max_intensity = torch.tensor(max_intensity)
         self.counter = 0
-        self.power_2 = config['power_2']
-        self.pad_to_power_2 = self.power_2-N
+        #self.power_2 = config['power_2']
+        #self.pad_to_power_2 = self.power_2-N
         self.pad = 500
         self.datetime = datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -204,8 +204,8 @@ class PhysicalLayer(nn.Module):
 
         
         # initialize phase mask
-        self.A = 1 * np.exp(-(np.square(X) + np.square(Y)) / (2 * laser_beam_FWHC ** 2))
-        self.A = torch.from_numpy(self.A).type(torch.FloatTensor).to(device)
+        self.incident_gaussian = 1 * np.exp(-(np.square(X) + np.square(Y)) / (2 * laser_beam_FWHC ** 2))
+        self.incident_gaussian = torch.from_numpy(self.incident_gaussian).type(torch.FloatTensor).to(device)
         
             
 
@@ -272,7 +272,7 @@ class PhysicalLayer(nn.Module):
         Nbatch, Nemitters = xyz.shape[0], xyz.shape[1]
         
         if self.lens_approach == 'fresnel':
-            mask_param = self.A * torch.exp(1j * mask_param)
+            mask_param = self.incident_gaussian * torch.exp(1j * mask_param)
             mask_param = mask_param[None, None, :]
             #multiply the mask with the phase function of the lens (B1)
             B1 = self.B1 * mask_param
@@ -280,17 +280,17 @@ class PhysicalLayer(nn.Module):
             # AG - Need to check if the FFT will be faster if padded to 1024
             # pad_to_power_2 = NextPowerOfTwo(B1.shape[0])-B1.shape[0]
             
-            E1 = F.pad(B1, (self.pad//2, self.pad//2, self.pad//2, self.pad//2), 'constant', 0)
+            E1 = F.pad(B1, (self.N//2, self.N//2, self.N//2, self.N//2), 'constant', 0)
             # Goodman book equation 4-14, convolution method - lens kernel (Q1) and the image after mask and lens function (E2)
             E2 = torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fft2(E1) * torch.fft.fft2(self.Q1)))
             output_layer = E2[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
         
         elif self.lens_approach == 'fourier':
             Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
-             # tried adding self.B1 here, but it didn't work
-            Uo = self.A * Ta # light directly behiund the SLM (or in our case reflected from the SLM)
-            Uo = Uo[None, None, :] # not sure why mani did this?
-            Uo_pad = F.pad(Uo, (self.pad//2, self.pad//2, self.pad//2, self.pad//2), 'constant', 0) # padded to interpolate with fft
+            Ta = Ta[None, None, :] 
+            Uo = self.incident_gaussian * Ta # light directly behiund the SLM (or in our case reflected from the SLM)
+            #Uo = Uo[None, None, :] # not sure why mani did this?
+            Uo_pad = F.pad(Uo, (self.N//2, self.N//2, self.N//2, self.N//2), 'constant', 0) # padded to interpolate with fft
             Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad)) # fourier spectrum of the light directly after the SLM
             # can ignore a constant phase factor from goodman 1/(1j * self.wavelength * self.focal_length)
             Uf = Fo # light at the back focal plane of the lens   
@@ -298,24 +298,23 @@ class PhysicalLayer(nn.Module):
         
         elif self.lens_approach == 'convolution':
             Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
-            # tried adding self.B1 here, but it didn't work
-            Uo = self.A * Ta # light directly behiund the SLM (or in our case reflected from the SLM)
-            
-            Uo = Uo[None, None, :] # not sure why mani did this?
-            Uo_pad = F.pad(Uo, (self.pad//2, self.pad//2, self.pad//2, self.pad//2), 'constant', 0) # padded to interpolate with fft
+            Ta = Ta[None, None, :]
+            Uo = self.incident_gaussian * Ta # light directly behiund the SLM (or in our case reflected from the SLM)
+    
+            Uo_pad = F.pad(Uo, (self.N//2, self.N//2, self.N//2, self.N//2), 'constant', 0) # padded to interpolate with fft
             #Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad)) # fourier spectrum of the light directly after the SLM
             #Fl = Fo * self.H # propogated through free space from the SLM to a plane directly incident on the lens
-            Ul = torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1))) # light directly infront of the lens
+            Ul = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1)) # light directly infront of the lens
             Ul_cropped = Ul[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
-            Ul_prime = Ul_cropped * self.B1 # light after the lens
-            Ul_prime_pad = F.pad(Ul_prime, (self.pad//2, self.pad//2, self.pad//2, self.pad//2), 'constant', 0) # padded to interpolate with fft
+            Ul_prime = Ul_cropped * self.B1 # light after the lens transformation
+            Ul_prime_pad = F.pad(Ul_prime, (self.N//2, self.N//2, self.N//2, self.N//2), 'constant', 0) # padded to interpolate with fft
             Uf = torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1))) # light at the back focal plane of the lens   
-            output_layer = Uf[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2] # only using the spoatial frequencies [-250,250]
+            output_layer = Uf[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2] 
         
         else:
             raise ValueError('lens approach not supported')
             
-        if self.counter % 50 == 0 and self.training:    
+        if self.counter == 0 and not self.training:    
             save_output_layer(output_layer, self.bfp_dir, self.lens_approach, self.counter, self.datetime, self.config)
         self.counter += 1
         
