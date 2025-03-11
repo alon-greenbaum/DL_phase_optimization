@@ -11,6 +11,7 @@ from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
 from physics_utils import PhysicalLayer  # physical model import
 from beam_profile_gen import beam_profile_focus, beam_section, phase_mask_gen
+from metrics import compute_metrics
 
 # Parse arguments
 def main():
@@ -29,6 +30,7 @@ def main():
     parser.add_argument("--beam_3d_sections", type=str, default="beam_3d_sections", help="Optional: Path to the beam 3d sections file")
     parser.add_argument("--generate_beam_profile", action="store_true", help="Generate beam profile for the input mask (default: off)")
     parser.add_argument("--img_at_end_epoch", action="store_true", help="Use the mask image at the end of the epoch (default: off)")
+    parser.add_argument("--max_intensity", type=float, default=5.0e+4, help="Maximum intensity for the mask (default: 1.0)")
     args = parser.parse_args()
 
     # Automatically determine CNN model path if not provided
@@ -50,6 +52,8 @@ def main():
     config = load_config(config_path)
     config['device'] = torch.device(args.device if torch.cuda.is_available() else "cpu")
     config['inference_epoch'] = args.epoch
+    if args.max_intensity:
+        config['max_intensity'] = args.max_intensity
     if args.lens_approach:
         config['lens_approach'] = args.lens_approach
     if args.no_noise:
@@ -60,7 +64,7 @@ def main():
 
     # Load mask from tiff file (for both models)
     if args.img_at_end_epoch:
-        mask_filename = f"mask_phase_epoch_{args.epoch-1}_499.tiff"
+        mask_filename = f"mask_phase_epoch_{args.epoch-1}_249.tiff"
     else:
         mask_filename = f"mask_phase_epoch_{args.epoch-1}_0.tiff"
         
@@ -166,6 +170,29 @@ def main():
         skimage.io.imsave(gt_path, gt_img[0,:,:])
         print(f"Saved ground truth for key {key} to {gt_path}")
 
+        # --- New: Compute and log performance metrics ---
+        gt_full = gt_img[0, :, :]
+        cnn_full = cnn_img[0, :, :]
+        precision, recall, f1 = compute_metrics(gt_full, cnn_full)
+        print(f"Full image: Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
+        """
+        H = gt_full.shape[0]
+        top_gt = gt_full[0,:H//3, :]
+        top_pred = cnn_full[0,:H//3, :]
+        precision_top, recall_top, f1_top = compute_metrics(top_gt, top_pred)
+        print(f"Top third:    Precision: {precision_top:.4f}, Recall: {recall_top:.4f}, F1: {f1_top:.4f}")
+        
+        middle_gt = gt_full[H//3:2*H//3, :]
+        middle_pred = cnn_full[H//3:2*H//3, :]
+        precision_mid, recall_mid, f1_mid = compute_metrics(middle_gt, middle_pred)
+        print(f"Middle third: Precision: {precision_mid:.4f}, Recall: {recall_mid:.4f}, F1: {f1_mid:.4f}")
+        
+        bottom_gt = gt_full[2*H//3:, :]
+        bottom_pred = cnn_full[2*H//3:, :]  # Updated slice to match expected dimensions
+        precision_bot, recall_bot, f1_bot = compute_metrics(bottom_gt, bottom_pred)
+        print(f"Bottom third: Precision: {precision_bot:.4f}, Recall: {recall_bot:.4f}, F1: {f1_bot:.4f}")
+        # --- End new code ---
+        """
         # Optional: Empty mask inference
         if args.empty_mask:
             empty_mask_tensor = torch.zeros_like(mask_tensor)

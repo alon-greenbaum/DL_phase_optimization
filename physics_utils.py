@@ -207,7 +207,6 @@ class PhysicalLayer(nn.Module):
         self.incident_gaussian = 1 * np.exp(-(np.square(X) + np.square(Y)) / (2 * laser_beam_FWHC ** 2))
         self.incident_gaussian = torch.from_numpy(self.incident_gaussian).type(torch.FloatTensor).to(device)
         
-            
 
         C1 = (np.pi / (self.wavelength * self.focal_length) * (np.square(X) + np.square(Y))) % (
             2 * np.pi)  # lens function lens as a phase transformer
@@ -300,16 +299,15 @@ class PhysicalLayer(nn.Module):
             Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
             Ta = Ta[None, None, :]
             Uo = self.incident_gaussian * Ta # light directly behiund the SLM (or in our case reflected from the SLM)
-    
-            Uo_pad = F.pad(Uo, (self.N//2, self.N//2, self.N//2, self.N//2), 'constant', 0) # padded to interpolate with fft
+            Uo_pad = F.pad(Uo, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
             #Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad)) # fourier spectrum of the light directly after the SLM
             #Fl = Fo * self.H # propogated through free space from the SLM to a plane directly incident on the lens
             Ul = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1)) # light directly infront of the lens
-            Ul_cropped = Ul[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
-            Ul_prime = Ul_cropped * self.B1 # light after the lens transformation
-            Ul_prime_pad = F.pad(Ul_prime, (self.N//2, self.N//2, self.N//2, self.N//2), 'constant', 0) # padded to interpolate with fft
-            Uf = torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1))) # light at the back focal plane of the lens   
-            output_layer = Uf[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2] 
+            Ul_cropped = Ul[:, :, -self.N:, -self.N:]
+            Ul_prime = Ul_cropped * self.B1 # light after the lens
+            Ul_prime_pad = F.pad(Ul_prime, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
+            Uf = torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1)) # light at the back focal plane of the lens   
+            output_layer = Uf[:, :, -self.N:, -self.N:]
         
         else:
             raise ValueError('lens approach not supported')
@@ -343,7 +341,7 @@ class PhysicalLayer(nn.Module):
                     ) # should this 1e-6 be self.px?
                 U1 = torch.real(U1 * torch.conj(U1))
 
-                #Here we assume that the beam is being dithered up and down
+                # Here we assume that the beam is being dithered up and down
                 intensity = torch.sum(U1[0, 0, :, int(((self.N*self.px*1e6)//2-1) + z)]) # if px is 1e-6 why multiply by 1e6?
                 imgs3D[i, 0, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1,\
                 y - self.psf_keep_radius: y + self.psf_keep_radius + 1] += torch.from_numpy(
@@ -356,12 +354,13 @@ class PhysicalLayer(nn.Module):
                 #plt.show()
 
         # need to check the normalization here
-        imgs3D = imgs3D / self.max_intensity
+        #imgs3D = imgs3D / self.max_intensity
 
         # Conditionally bypass noise addition during inference if skip_noise flag is set
         if self.config.get('skip_noise', False) and not self.training:
-            result = self.norm01(imgs3D)
-            return result
+            #result = self.norm01(imgs3D)
+            #use torch normalize functiopn
+            return imgs3D
         else:
             result_noisy = self.noise(imgs3D)
             result_noisy01 = self.norm01(result_noisy)

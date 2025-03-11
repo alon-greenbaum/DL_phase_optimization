@@ -44,4 +44,4 @@ num_classes: 1
 lens_approach: "fresnel" # "fourier" or "fresnel"
 power_2: 1000 # pad to this power for fourier transform
 bfp_dir: "back_focal_plane"
-dropout: 0.0
+dropout: 0.5
