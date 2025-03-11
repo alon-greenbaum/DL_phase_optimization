@@ -27,8 +27,9 @@ class OpticsDesignUnet(nn.Module):
     def __init__(self, config):
         super(OpticsDesignUnet, self).__init__()
         # adding the physicalLayer into the mix
+        self.Nimgs = config['Nimgs']
         self.physicalLayer = PhysicalLayer(config)
-        self.norm = nn.BatchNorm2d(num_features=1, affine=True)
+        self.norm = nn.BatchNorm2d(num_features=self.Nimgs, affine=True)
         num_classes = config['num_classes']
         dropout = config.get('dropout', 0.0)  # new dropout value from config
 
@@ -40,7 +41,7 @@ class OpticsDesignUnet(nn.Module):
         # AG since we use monochrome here, we used only one channel as an input
         # For four layers we had ~14M parameters, too many
         # For Three layers we hopefully have few parameters to optimize
-        self.down_convolution_1 = double_convolution(1, 64, dropout=dropout)
+        self.down_convolution_1 = double_convolution(self.Nimgs, 64, dropout=dropout)
         self.down_convolution_2 = double_convolution(64, 128, dropout=dropout)
         self.down_convolution_3 = double_convolution(128, 256, dropout=dropout)
 

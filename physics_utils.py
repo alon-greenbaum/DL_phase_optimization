@@ -185,6 +185,10 @@ class PhysicalLayer(nn.Module):
         #self.pad_to_power_2 = self.power_2-N
         self.pad = 500
         self.datetime = datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.Nimgs = config.get('Nimgs', 1)
+        if self.Nimgs % 2 == 0:
+            raise ValueError('Nimgs must be odd')
+        
 
         # to transer the physical size of the imaging volume
         self.image_volume_um = image_volume
@@ -316,7 +320,7 @@ class PhysicalLayer(nn.Module):
             save_output_layer(output_layer, self.bfp_dir, self.lens_approach, self.counter, self.datetime, self.config)
         self.counter += 1
         
-        imgs3D = torch.zeros(Nbatch, 1, self.image_volume_um[0], self.image_volume_um[0]).type(torch.FloatTensor).to(self.device)
+        imgs3D = torch.zeros(Nbatch, self.Nimgs, self.image_volume_um[0], self.image_volume_um[0]).type(torch.FloatTensor).to(self.device)
         
         # #### AG seems not necessary, since you multiply the gamma_cust with 0
         #U1 = torch.fft.ifft2(torch.fft.ifftshift(
@@ -325,42 +329,42 @@ class PhysicalLayer(nn.Module):
         # #### AG
 
         # Go over the position of each bead and create the appropriate image
-        for i in range(Nbatch):
-            for j in range(Nemitters):
-                # change x value to fit different field of view
-                x = xyz[i, j, 0].type(torch.LongTensor) - self.image_volume_um[0]//2
-                y = xyz[i, j, 1].type(torch.LongTensor)
-                z = xyz[i, j, 2].type(torch.LongTensor)
+        
+        for l in range(self.Nimgs):
+            for i in range(Nbatch):
+                for j in range(Nemitters):
+                    # change x value to fit different field of view
+                    x = xyz[i, j, 0].type(torch.LongTensor) - self.image_volume_um[0]//2
+                    y = xyz[i, j, 1].type(torch.LongTensor)
+                    z = xyz[i, j, 2].type(torch.LongTensor)
 
-                x_ori = xyz[i, j, 0].type(torch.LongTensor)
-                U1 = torch.fft.ifft2(
-                    torch.fft.ifftshift(
-                        torch.fft.fftshift(torch.fft.fft2(output_layer)) 
-                        * torch.exp(1j * self.k * self.gamma_cust * x * self.px)
-                        )
-                    ) # should this 1e-6 be self.px?
-                U1 = torch.real(U1 * torch.conj(U1))
+                    x_ori = xyz[i, j, 0].type(torch.LongTensor)
+                    U1 = torch.fft.ifft2(
+                        torch.fft.ifftshift(
+                            torch.fft.fftshift(torch.fft.fft2(output_layer)) 
+                            * torch.exp(1j * self.k * self.gamma_cust * x * self.px)
+                            )
+                        ) # should this 1e-6 be self.px?
+                    U1 = torch.real(U1 * torch.conj(U1))
 
-                # Here we assume that the beam is being dithered up and down
-                intensity = torch.sum(U1[0, 0, :, int(((self.N*self.px*1e6)//2-1) + z)]) # if px is 1e-6 why multiply by 1e6?
-                imgs3D[i, 0, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1,\
-                y - self.psf_keep_radius: y + self.psf_keep_radius + 1] += torch.from_numpy(
-                    self.imgs[abs(z.item())].astype('float32')).type(torch.FloatTensor).to(self.device) * intensity
+                    # Here we assume that the beam is being dithered up and down
+                    intensity = torch.sum(U1[0, 0, :, int((self.N//2-1) + z)]) # if px is 1e-6 why multiply by 1e6?
+                    imgs3D[i, l, y - self.psf_keep_radius: y + self.psf_keep_radius + 1, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1] += torch.from_numpy(
+                        self.imgs[abs(z.item())+l-(self.Nimgs//2)].astype('float32')).type(torch.FloatTensor).to(self.device) * intensity
 
-                # Debug
-                #a = imgs3D[i, 0, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1,\
-                #y - self.psf_keep_radius: y + self.psf_keep_radius + 1]
-                #plt.imshow(a.detach().numpy())
-                #plt.show()
+                    # Debug
+                    #a = imgs3D[i, 0, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1,\
+                    #y - self.psf_keep_radius: y + self.psf_keep_radius + 1]
+                    #plt.imshow(a.detach().numpy())
+                    #plt.show()
 
         # need to check the normalization here
-        #imgs3D = imgs3D / self.max_intensity
+        imgs3D = imgs3D / self.max_intensity
 
         # Conditionally bypass noise addition during inference if skip_noise flag is set
         if self.config.get('skip_noise', False) and not self.training:
-            #result = self.norm01(imgs3D)
-            #use torch normalize functiopn
-            return imgs3D
+            result = self.norm01(imgs3D)
+            return result
         else:
             result_noisy = self.noise(imgs3D)
             result_noisy01 = self.norm01(result_noisy)
