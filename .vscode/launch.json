@@ -9,7 +9,7 @@
             "console": "integratedTerminal",
             "args": [
                 "--input_dir",
-                "./training_results/phase_model_20250311-203700/",
+                "./training_results/phase_model_20250312-010924/",
                 "--epoch",
                 "1",
                 "--res_dir",
@@ -22,6 +22,9 @@
                 "--paper_mask",
                 "example_optimized_phase.tiff",
                 "--no_noise",
+                "--max_intensity",
+                "5.0e+4" // 5e4
+
             ]
         },
         {

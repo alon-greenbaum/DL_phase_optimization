@@ -41,17 +41,17 @@ def load_image_with_wildcard(directory, filename_prefix, file_type):
   image_path = matching_files[0]
   return image_path
 
-def phys_img_save(img, out_dir, key):
+def phys_img_save(img, out_dir, key, name):
     """
     Save a 3D image array as seperate 2D tiffs or 2D array as 2D tiff
     """
     if img.ndim == 3:
         for i in range(img.shape[0]):
-            path = os.path.join(out_dir, f"inference_phys_{key}_z_depth_{i-(img.shape[0]//2)}.tiff")
+            path = os.path.join(out_dir, f"inference_{name}_{key}_z_{i-(img.shape[0]//2)}.tiff")
             skimage.io.imsave(path, img[i])
             print(f"Saved physical inference depth {i} for key {key} to {path}")
     elif img.ndim == 2:
-        path = os.path.join(out_dir, f"inference_phys_{key}.tiff")
+        path = os.path.join(out_dir, f"inference_{name}_{key}.tiff")
         skimage.io.imsave(path, img)
         print(f"Saved physical inference for key {key} to {path}")
     else:
@@ -74,7 +74,7 @@ def main():
     parser.add_argument("--model_path", type=str, default="", help="Optional: Path to the CNN pretrained model checkpoint")
     parser.add_argument("--beam_3d_sections", type=str, default="beam_3d_sections", help="Optional: Path to the beam 3d sections file")
     parser.add_argument("--generate_beam_profile", action="store_true", help="Generate beam profile for the input mask (default: off)")
-    parser.add_argument("--max_intensity", type=float, default=5.0e+4, help="Maximum intensity for the mask (default: 1.0)")
+    parser.add_argument("--max_intensity", type=float, default=5.0e+4, help="Maximum intensity for the mask (default: 5e4)")
     args = parser.parse_args()
 
     # Automatically determine CNN model path if not provided
@@ -194,7 +194,7 @@ def main():
         
         # Save physical inference output
         phys_img = out_phys.detach().cpu().squeeze().numpy()
-        phys_img_save(phys_img[display_batch], out_dir, key)
+        phys_img_save(phys_img[display_batch], out_dir, key, "learned_mask_phys")
 
         # Save CNN inference output
         cnn_img = out_cnn.detach().cpu().squeeze().numpy()
@@ -246,7 +246,9 @@ def main():
             empty_cnn_img = out_empty_cnn.detach().cpu().squeeze().numpy()
             empty_phys_path = os.path.join(out_dir, f"inference_empty_phys_{key}.tiff")
             empty_cnn_path = os.path.join(out_dir, f"inference_empty_cnn_{key}.tiff")
-            skimage.io.imsave(empty_phys_path, empty_phys_img[0])
+            phys_img_save(empty_phys_img[display_batch], out_dir, key, "empty_mask_phys")
+            #skimage.io.imsave(empty_phys_path, empty_phys_img[0])
+            
             skimage.io.imsave(empty_cnn_path, empty_cnn_img[0])
             print(f"Saved empty mask inference for key {key} to {empty_phys_path} and {empty_cnn_path}")
 
@@ -259,7 +261,8 @@ def main():
             paper_cnn_img = out_paper_cnn.detach().cpu().squeeze().numpy()
             paper_phys_path = os.path.join(out_dir, f"inference_paper_phys_{key}.tiff")
             paper_cnn_path = os.path.join(out_dir, f"inference_paper_cnn_{key}.tiff")
-            skimage.io.imsave(paper_phys_path, paper_phys_img[0])
+            #skimage.io.imsave(paper_phys_path, paper_phys_img[0])
+            phys_img_save(paper_phys_img[display_batch], out_dir, key, "paper_mask_phys")
             skimage.io.imsave(paper_cnn_path, paper_cnn_img[0])
             print(f"Saved paper mask inference for key {key} to {paper_phys_path} and {paper_cnn_path}")
 
