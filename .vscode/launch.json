@@ -9,7 +9,7 @@
             "console": "integratedTerminal",
             "args": [
                 "--input_dir",
-                "./training_results/phase_model_20250311-162811/",
+                "./training_results/phase_model_20250311-203700/",
                 "--epoch",
                 "1",
                 "--res_dir",

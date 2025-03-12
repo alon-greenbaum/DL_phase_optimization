@@ -301,17 +301,19 @@ class PhysicalLayer(nn.Module):
         
         elif self.lens_approach == 'convolution':
             Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
-            Ta = Ta[None, None, :]
+            #Ta = Ta[None, None, :]
             Uo = self.incident_gaussian * Ta # light directly behiund the SLM (or in our case reflected from the SLM)
             Uo_pad = F.pad(Uo, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
             #Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad)) # fourier spectrum of the light directly after the SLM
             #Fl = Fo * self.H # propogated through free space from the SLM to a plane directly incident on the lens
             Ul = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1)) # light directly infront of the lens
-            Ul_cropped = Ul[:, :, -self.N:, -self.N:]
+            #Ul_cropped = Ul[:, :, -self.N:, -self.N:]
+            Ul_cropped = Ul[-self.N:, -self.N:]
             Ul_prime = Ul_cropped * self.B1 # light after the lens
             Ul_prime_pad = F.pad(Ul_prime, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
             Uf = torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1)) # light at the back focal plane of the lens   
-            output_layer = Uf[:, :, -self.N:, -self.N:]
+            #output_layer = Uf[:, :, -self.N:, -self.N:]
+            output_layer = Uf[-self.N:, -self.N:]
         
         else:
             raise ValueError('lens approach not supported')
@@ -329,6 +331,8 @@ class PhysicalLayer(nn.Module):
         # #### AG
 
         # Go over the position of each bead and create the appropriate image
+        # l = 0 the center of the bead volume is focused by the detection obj
+        # l = 1 the focal plane is 1 unit further away from the detection obj
         
         for l in range(self.Nimgs):
             for i in range(Nbatch):
@@ -349,8 +353,11 @@ class PhysicalLayer(nn.Module):
 
                     # Here we assume that the beam is being dithered up and down
                     intensity = torch.sum(U1[0, 0, :, int((self.N//2-1) + z)]) # if px is 1e-6 why multiply by 1e6?
-                    imgs3D[i, l, y - self.psf_keep_radius: y + self.psf_keep_radius + 1, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1] += torch.from_numpy(
-                        self.imgs[abs(z.item())+l-(self.Nimgs//2)].astype('float32')).type(torch.FloatTensor).to(self.device) * intensity
+                    imgs3D[i, l, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1, y - self.psf_keep_radius: y + self.psf_keep_radius + 1] += torch.from_numpy(
+                        self.imgs[
+                            abs(
+                                z.item()-( l - (self.Nimgs//2) )
+                                )].astype('float32')).type(torch.FloatTensor).to(self.device) * intensity
 
                     # Debug
                     #a = imgs3D[i, 0, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1,\
