@@ -75,17 +75,17 @@
             "program": "${workspaceFolder}/beam_profile_ryan.py",
             "console": "integratedTerminal",
             "args": [
-                //"--input_dir",
-                //"./training_results/phase_model_20250219-171134/",
-                //"--epoch",
-                //"101",
-                "--mask_filepath",
+                "--input_dir",
+                "./training_results/phase_model_20250312-112724/",
+                "--epoch",
+                "75",
+                //"--mask_filepath",
                 //"training_results/phase_model_20250219-171134/mask_phase_epoch_100_499.tiff",
-                "example_optimized_phase.tiff",
+                //"example_optimized_phase.tiff",
                 "--x_min",
-                "-200",
+                "-100",
                 "--x_max",
-                "200",
+                "100",
             ]
         }
     ]

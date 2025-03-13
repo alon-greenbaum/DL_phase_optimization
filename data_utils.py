@@ -10,6 +10,7 @@ import skimage
 import yaml
 import os
 import datetime
+import glob
 
 
 # ======================================================================================================================
@@ -23,6 +24,62 @@ def makedirs(path):
     if not os.path.exists(path):
         os.makedirs(path)
         
+def img_save_tiff(img, out_dir, name, key=None):
+    """
+    Save a 3D image array as separate 2D tiffs or a 2D array as a 2D tiff.
+    Args:
+        img (numpy.ndarray): The image array to save.
+        out_dir (str): The directory to save the image(s) to.
+        name (str): The base name for the saved image file(s).
+        key (str, optional): An optional identifier to include in the filename. Defaults to None.
+    """
+    if key is None:
+        base_filename = f"{name}.tiff"
+        base_path = os.path.join(out_dir, base_filename)
+    else:
+        base_filename = f"{name}_{key}.tiff"
+        base_path = os.path.join(out_dir, base_filename)
+
+    if img.ndim == 3:
+        for i in range(img.shape[0]):
+            if key is None:
+                path = os.path.join(out_dir, f"{name}_z_{i-(img.shape[0]//2)}.tiff")
+            else:
+                path = os.path.join(out_dir, f"{name}_{key}_z_{i-(img.shape[0]//2)}.tiff")
+            skimage.io.imsave(path, img[i])
+            print(f"Saved {name} at depth {i} for key {key} to {path}")
+    elif img.ndim == 2:
+        skimage.io.imsave(base_path, img)
+        print(f"Saved {name} to {base_path}")
+    else:
+        print(f"Unexpected dimensions for phys_img: {img.shape}")
+         
+def find_image_with_wildcard(directory, filename_prefix, file_type):
+    """
+    Loads an image from a directory, where the filename matches a prefix
+    followed by a wildcard (e.g., a number) and a file extension.
+
+    Args:
+    directory: The directory containing the image.
+    filename_prefix: The prefix of the filename (e.g., "mask_phase_epoch_1_").
+
+    Returns:
+    A matching image path or None if no matching image is found.
+    """
+    search_pattern = os.path.join(directory, filename_prefix + "*." + file_type)  # Adjust extension if needed
+    matching_files = glob.glob(search_pattern)
+
+    if not matching_files:
+        print(f"No files found matching pattern: {search_pattern}")
+        return None
+
+    # Load the first matching file (you might want to add logic to select
+    # a specific file if multiple matches are possible).
+    image_path = matching_files[0]
+    return image_path
+
+
+
 # function converts numpy array on CPU to torch Variable on GPU
 def to_var(x):
     """

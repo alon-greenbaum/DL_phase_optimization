@@ -4,6 +4,7 @@ import numpy as np
 import skimage.io
 from datetime import datetime
 from beam_profile_gen import beam_profile_focus, beam_section, phase_mask_gen
+from data_utils import find_image_with_wildcard
 
 def main():
     parser = argparse.ArgumentParser(description="Generate beam profile from input mask.")
@@ -16,8 +17,8 @@ def main():
     # New optional argument for dummy mask generation
     parser.add_argument("--dummy_mask", action="store_true", help="Use a 500x500 mask of zeros instead of reading an input mask")
     # New optional arguments for z_min and z_max:
-    parser.add_argument("--x_min", type=int, default=-201, help="Minimum z value for beam section generation")
-    parser.add_argument("--x_max", type=int, default=201, help="Maximum z value for beam section generation")
+    parser.add_argument("--x_min", type=int, default=-100, help="Minimum z value for beam section generation")
+    parser.add_argument("--x_max", type=int, default=100, help="Maximum z value for beam section generation")
     parser.add_argument("--y_min", type=int, default=-50, help="Minimum y value for beam section generation")
     parser.add_argument("--y_max", type=int, default=50, help="Maximum y value for beam section generation")
     args = parser.parse_args()
@@ -31,8 +32,8 @@ def main():
             mask_path = args.mask_filepath
             print(f"Using user-provided mask file: {mask_path}")
         else:
-            mask_filename = f"mask_phase_epoch_{args.epoch-1}_0.tiff"
-            mask_path = os.path.join(args.input_dir, mask_filename)
+            mask_filename = f"mask_phase_epoch_{args.epoch-1}_"
+            mask_path = find_image_with_wildcard(args.input_dir, mask_filename, "tiff")
             print(f"Automatically using mask file: {mask_path}")
         mask_np = skimage.io.imread(mask_path)
     
@@ -74,7 +75,7 @@ def main():
     print(f"Saved input mask used to {mask_used_path}")
     # --- End new code ---
     
-    # Compute beam section profiles using provided z_min and z_max:
+    # Compute beam section profiles using provided min and max
     beam_profile = beam_section(beam_focused, beam_sections_dir, args.x_min, args.x_max,args.y_min,args.y_max)
     
     # Save overall beam profile as a TIFF file

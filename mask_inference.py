@@ -7,56 +7,12 @@ import skimage.io
 import torch
 import torch.nn as nn
 from datetime import datetime
-from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid
+from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid, img_save_tiff, find_image_with_wildcard
 from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
 from physics_utils import PhysicalLayer  # physical model import
 from beam_profile_gen import beam_profile_focus, beam_section, phase_mask_gen
 from metrics import compute_metrics
-
-# consider that when skip noise is enabled the cnn is doing inference on easier images without noise
-
-def load_image_with_wildcard(directory, filename_prefix, file_type):
-  """
-  Loads an image from a directory, where the filename matches a prefix
-  followed by a wildcard (e.g., a number) and a file extension.
-
-  Args:
-    directory: The directory containing the image.
-    filename_prefix: The prefix of the filename (e.g., "mask_phase_epoch_1_").
-
-  Returns:
-    A NumPy array representing the loaded image, or None if no matching
-    image is found.
-  """
-  search_pattern = os.path.join(directory, filename_prefix + "*." + file_type)  # Adjust extension if needed
-  matching_files = glob.glob(search_pattern)
-
-  if not matching_files:
-    print(f"No files found matching pattern: {search_pattern}")
-    return None
-
-  # Load the first matching file (you might want to add logic to select
-  # a specific file if multiple matches are possible).
-  image_path = matching_files[0]
-  return image_path
-
-def phys_img_save(img, out_dir, key, name):
-    """
-    Save a 3D image array as seperate 2D tiffs or 2D array as 2D tiff
-    """
-    if img.ndim == 3:
-        for i in range(img.shape[0]):
-            path = os.path.join(out_dir, f"inference_{name}_{key}_z_{i-(img.shape[0]//2)}.tiff")
-            skimage.io.imsave(path, img[i])
-            print(f"Saved physical inference depth {i} for key {key} to {path}")
-    elif img.ndim == 2:
-        path = os.path.join(out_dir, f"inference_{name}_{key}.tiff")
-        skimage.io.imsave(path, img)
-        print(f"Saved physical inference for key {key} to {path}")
-    else:
-        print(f"Unexpected dimensions for phys_img: {img.shape}")
-    
 
 # Parse arguments
 def main():
@@ -110,7 +66,7 @@ def main():
 
     # Load mask from tiff file (for both models)
 
-    mask_path = load_image_with_wildcard(args.input_dir, f"mask_phase_epoch_{args.epoch-1}_", "tiff")
+    mask_path = find_image_with_wildcard(args.input_dir, f"mask_phase_epoch_{args.epoch-1}_", "tiff")
     mask_np = skimage.io.imread(mask_path)
     mask_tensor = torch.from_numpy(mask_np).type(torch.FloatTensor).to(config['device'])
     mask_param = torch.nn.Parameter(mask_tensor, requires_grad=False)
@@ -194,7 +150,7 @@ def main():
         
         # Save physical inference output
         phys_img = out_phys.detach().cpu().squeeze().numpy()
-        phys_img_save(phys_img[display_batch], out_dir, key, "learned_mask_phys")
+        img_save_tiff(phys_img[display_batch], out_dir, "learned_mask_camera", key)
 
         # Save CNN inference output
         cnn_img = out_cnn.detach().cpu().squeeze().numpy()
@@ -244,13 +200,13 @@ def main():
                 out_empty_cnn = cnn_model(empty_mask_param, xyz, Nphotons)
             empty_phys_img = out_empty_phys.detach().cpu().squeeze().numpy()
             empty_cnn_img = out_empty_cnn.detach().cpu().squeeze().numpy()
-            empty_phys_path = os.path.join(out_dir, f"inference_empty_phys_{key}.tiff")
+            #empty_phys_path = os.path.join(out_dir, f"inference_empty_phys_{key}.tiff")
             empty_cnn_path = os.path.join(out_dir, f"inference_empty_cnn_{key}.tiff")
-            phys_img_save(empty_phys_img[display_batch], out_dir, key, "empty_mask_phys")
+            img_save_tiff(empty_phys_img[display_batch], out_dir, "empty_mask_camera", key)
             #skimage.io.imsave(empty_phys_path, empty_phys_img[0])
             
             skimage.io.imsave(empty_cnn_path, empty_cnn_img[0])
-            print(f"Saved empty mask inference for key {key} to {empty_phys_path} and {empty_cnn_path}")
+            #print(f"Saved empty mask inference for key {key} to {empty_phys_path} and {empty_cnn_path}")
 
         # Optional: Paper mask inference if provided
         if args.paper_mask:
@@ -259,12 +215,12 @@ def main():
                 out_paper_cnn = cnn_model(paper_mask_param, xyz, Nphotons)
             paper_phys_img = out_paper_phys.detach().cpu().squeeze().numpy()
             paper_cnn_img = out_paper_cnn.detach().cpu().squeeze().numpy()
-            paper_phys_path = os.path.join(out_dir, f"inference_paper_phys_{key}.tiff")
+            #paper_phys_path = os.path.join(out_dir, f"inference_paper_camera_{key}.tiff")
             paper_cnn_path = os.path.join(out_dir, f"inference_paper_cnn_{key}.tiff")
             #skimage.io.imsave(paper_phys_path, paper_phys_img[0])
-            phys_img_save(paper_phys_img[display_batch], out_dir, key, "paper_mask_phys")
+            img_save_tiff(paper_phys_img[display_batch], out_dir, "paper_mask_camera", key)
             skimage.io.imsave(paper_cnn_path, paper_cnn_img[0])
-            print(f"Saved paper mask inference for key {key} to {paper_phys_path} and {paper_cnn_path}")
+            #print(f"Saved paper mask inference for key {key} to {paper_phys_path} and {paper_cnn_path}")
 
 if __name__ == "__main__":
     main()
