@@ -9,9 +9,9 @@
             "console": "integratedTerminal",
             "args": [
                 "--input_dir",
-                "./training_results/phase_model_20250312-010924/",
+                "./training_results/phase_model_20250312-112724/",
                 "--epoch",
-                "1",
+                "100",
                 "--res_dir",
                 "inference_results",
                 "--num_inferences",
@@ -23,7 +23,8 @@
                 "example_optimized_phase.tiff",
                 "--no_noise",
                 "--max_intensity",
-                "5.0e+4" // 5e4
+                "5.0e+4", // 5e4
+                "--generate_beam_profile"
 
             ]
         },

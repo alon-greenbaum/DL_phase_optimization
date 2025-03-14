@@ -26,12 +26,14 @@ def double_convolution_3d(in_channels, out_channels, dropout=0.0):
     """
     Convolution block with optional dropout.
     """
+    kernel_size = (2, 3, 3)
+    padding = 1
     conv_layers = [
-        nn.Conv3d(in_channels, out_channels, kernel_size=(3,3,3), padding=1),
+        nn.Conv3d(in_channels, out_channels, kernel_size=kernel_size, padding=padding),
         nn.Dropout3d(dropout) if dropout > 0 else nn.Identity(),
         nn.LeakyReLU(inplace=True),
         nn.BatchNorm3d(out_channels),
-        nn.Conv3d(in_channels, out_channels, kernel_size=(3,3,3), padding=1),
+        nn.Conv3d(out_channels, out_channels, kernel_size=kernel_size, padding=padding),
         nn.Dropout3d(dropout) if dropout > 0 else nn.Identity(),
         nn.LeakyReLU(inplace=True),
         nn.BatchNorm3d(out_channels)
@@ -45,6 +47,7 @@ class OpticsDesignUnet(nn.Module):
         # adding the physicalLayer into the mix
         self.Nimgs = config['Nimgs']
         self.physicalLayer = PhysicalLayer(config)
+        self.conv3d = config.get('conv3d', False)  # new flag for 3D convolutions
         
         num_classes = config['num_classes']
         dropout = config.get('dropout', 0.0)  # new dropout value from config
@@ -57,10 +60,10 @@ class OpticsDesignUnet(nn.Module):
         # AG since we use monochrome here, we used only one channel as an input
         # For four layers we had ~14M parameters, too many
         # For Three layers we hopefully have few parameters to optimize
-        if self.Nimgs == 1:
-            self.norm = nn.BatchNorm2d(num_features=1, affine=True)
+        if self.conv3d == False:
+            self.norm = nn.BatchNorm2d(num_features=self.Nimgs, affine=True)
             self.max_pool = nn.MaxPool2d(kernel_size=2, stride=2)
-            self.down_convolution_1 = double_convolution_2d(1, 64, dropout=dropout)
+            self.down_convolution_1 = double_convolution_2d(self.Nimgs, 64, dropout=dropout)
             self.down_convolution_2 = double_convolution_2d(64, 128, dropout=dropout)
             self.down_convolution_3 = double_convolution_2d(128, 256, dropout=dropout)
             
@@ -84,7 +87,7 @@ class OpticsDesignUnet(nn.Module):
             )
             
             
-        elif self.Nimgs > 1:
+        else:
             self.norm = nn.BatchNorm3d(num_features=1, affine=True)
             self.max_pool = nn.MaxPool3d(kernel_size=2, stride=2)
             self.down_convolution_1 = double_convolution_3d(1, 64, dropout=dropout)

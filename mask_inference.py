@@ -1,11 +1,9 @@
 import os
 import argparse
 import pickle
-import glob
 import numpy as np
 import skimage.io
 import torch
-import torch.nn as nn
 from datetime import datetime
 from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid, img_save_tiff, find_image_with_wildcard
 from cnn_utils import OpticsDesignCNN
@@ -14,8 +12,42 @@ from physics_utils import PhysicalLayer  # physical model import
 from beam_profile_gen import beam_profile_focus, beam_section, phase_mask_gen
 from metrics import compute_metrics
 
-# Parse arguments
+def run_inference(model, mask_param, xyz, Nphotons, device):
+    """
+    Runs inference using the given model.
+
+    Args:
+        model (torch.nn.Module): The model to use for inference.
+        mask_param (torch.nn.Parameter): The phase mask parameter.
+        xyz (torch.Tensor): The XYZ coordinates.
+        Nphotons (torch.Tensor): The number of photons.
+        device (torch.device): The device to run inference on.
+
+    Returns:
+        torch.Tensor: The output of the model.
+    """
+    with torch.no_grad():
+        out = model(mask_param, xyz, Nphotons)
+    return out.detach().cpu().squeeze().numpy()
+
+def compute_and_log_metrics(gt_img, cnn_img):
+    """
+    Computes and logs performance metrics for the full image.
+
+    Args:
+        gt_img (np.ndarray): The ground truth image.
+        cnn_img (np.ndarray): The CNN inference image.
+    """
+    gt_full = gt_img[0]
+    cnn_full = cnn_img[0]
+    precision, recall, f1 = compute_metrics(gt_full, cnn_full)
+    print(f"Full image: Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
+
 def main():
+    """
+    Main function to run combined inference for physical and CNN mask models.
+    """
+    # Parse arguments
     parser = argparse.ArgumentParser(description="Combined inference for physical and CNN mask models.")
     parser.add_argument("--input_dir", type=str, required=True, help="Directory containing config.yaml and labels.pickle")
     parser.add_argument("--epoch", type=int, required=True, help="Desired epoch for the mask (closest available at x*10+1)")
@@ -30,6 +62,10 @@ def main():
     parser.add_argument("--model_path", type=str, default="", help="Optional: Path to the CNN pretrained model checkpoint")
     parser.add_argument("--beam_3d_sections", type=str, default="beam_3d_sections", help="Optional: Path to the beam 3d sections file")
     parser.add_argument("--generate_beam_profile", action="store_true", help="Generate beam profile for the input mask (default: off)")
+    parser.add_argument("--x_min", type=int, default=-100, help="Minimum z value for beam section generation")
+    parser.add_argument("--x_max", type=int, default=100, help="Maximum z value for beam section generation")
+    parser.add_argument("--y_min", type=int, default=-50, help="Minimum y value for beam section generation")
+    parser.add_argument("--y_max", type=int, default=50, help="Maximum y value for beam section generation")
     parser.add_argument("--max_intensity", type=float, default=5.0e+4, help="Maximum intensity for the mask (default: 5e4)")
     args = parser.parse_args()
 
@@ -65,7 +101,6 @@ def main():
         config['px'] = float(config['px'])
 
     # Load mask from tiff file (for both models)
-
     mask_path = find_image_with_wildcard(args.input_dir, f"mask_phase_epoch_{args.epoch-1}_", "tiff")
     mask_np = skimage.io.imread(mask_path)
     mask_tensor = torch.from_numpy(mask_np).type(torch.FloatTensor).to(config['device'])
@@ -116,7 +151,7 @@ def main():
         for key, value in config.items():
             f.write(f"{key}: {value}\n")
     
-    # --- New: Optionally generate and save beam profile for the input mask ---
+    # Generate and save beam profile for the input mask
     if args.generate_beam_profile:
         input_mask_path = os.path.join(out_dir, "input_mask.tiff")
         skimage.io.imsave(input_mask_path, mask_np)
@@ -129,11 +164,10 @@ def main():
         mask_real = phase_mask_gen()
         mask_param_for_beam = mask_real*np.exp(1j*mask_np_for_beam)
         beam_focused = beam_profile_focus(mask_param_for_beam)
-        beam_profile = beam_section(beam_focused, beam_3d_sections_filepath)
+        beam_profile = beam_section(beam_focused, beam_3d_sections_filepath, args.x_min, args.x_max,args.y_min,args.y_max)
         beam_profile_out_path = os.path.join(out_dir, "beam_profile.tiff")
         skimage.io.imsave(beam_profile_out_path, (beam_profile/1e6).astype(np.uint16))
         print(f"Saved beam profile for input mask to {beam_profile_out_path}")
-    # --- End new code ---
 
     # Run inference for each selected key
     for key in selected_keys:
@@ -142,21 +176,13 @@ def main():
         xyz = torch.tensor(xyz_np, dtype=torch.float32).to(config['device'])
         Nphotons = torch.tensor(data['N'], dtype=torch.float32).to(config['device'])
 
-        with torch.no_grad():
-            # Physical layer inference
-            out_phys = phys_model(mask_param, xyz, Nphotons)
-            # CNN layer inference
-            out_cnn = cnn_model(mask_param, xyz, Nphotons)
-        
-        # Save physical inference output
-        phys_img = out_phys.detach().cpu().squeeze().numpy()
+        # Physical layer inference
+        phys_img = run_inference(phys_model, mask_param, xyz, Nphotons, config['device'])
         img_save_tiff(phys_img[display_batch], out_dir, "learned_mask_camera", key)
 
-        # Save CNN inference output
-        cnn_img = out_cnn.detach().cpu().squeeze().numpy()
-        cnn_path = os.path.join(out_dir, f"inference_cnn_{key}.tiff")
-        skimage.io.imsave(cnn_path, cnn_img[0])
-        print(f"Saved CNN inference for key {key} to {cnn_path}")
+        # CNN layer inference
+        cnn_img = run_inference(cnn_model, mask_param, xyz, Nphotons, config['device'])
+        img_save_tiff(cnn_img[0], out_dir, "inference_cnn", key)
 
         # Save ground truth
         gt_img = batch_xyz_to_boolean_grid(xyz_np, config)
@@ -164,63 +190,27 @@ def main():
             gt_img = gt_img.detach().cpu().numpy()
         if gt_img.dtype == np.bool_:
             gt_img = (gt_img.astype(np.uint8)) * 255
-        gt_path = os.path.join(out_dir, f"ground_truth_{key}.tiff")
-        skimage.io.imsave(gt_path, gt_img[0])
-        print(f"Saved ground truth for key {key} to {gt_path}")
+        img_save_tiff(gt_img[0], out_dir, "ground_truth", key)
 
-        # --- New: Compute and log performance metrics ---
-        gt_full = gt_img[0]
-        cnn_full = cnn_img[0]
-        precision, recall, f1 = compute_metrics(gt_full, cnn_full)
-        print(f"Full image: Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
-        """
-        H = gt_full.shape[0]
-        top_gt = gt_full[0,:H//3, :]
-        top_pred = cnn_full[0,:H//3, :]
-        precision_top, recall_top, f1_top = compute_metrics(top_gt, top_pred)
-        print(f"Top third:    Precision: {precision_top:.4f}, Recall: {recall_top:.4f}, F1: {f1_top:.4f}")
-        
-        middle_gt = gt_full[H//3:2*H//3, :]
-        middle_pred = cnn_full[H//3:2*H//3, :]
-        precision_mid, recall_mid, f1_mid = compute_metrics(middle_gt, middle_pred)
-        print(f"Middle third: Precision: {precision_mid:.4f}, Recall: {recall_mid:.4f}, F1: {f1_mid:.4f}")
-        
-        bottom_gt = gt_full[2*H//3:, :]
-        bottom_pred = cnn_full[2*H//3:, :]  # Updated slice to match expected dimensions
-        precision_bot, recall_bot, f1_bot = compute_metrics(bottom_gt, bottom_pred)
-        print(f"Bottom third: Precision: {precision_bot:.4f}, Recall: {recall_bot:.4f}, F1: {f1_bot:.4f}")
-        # --- End new code ---
-        """
-        # Optional: Empty mask inference
+        # Compute and log performance metrics
+        compute_and_log_metrics(gt_img, cnn_img)
+
+        # Empty mask inference
         if args.empty_mask:
             empty_mask_tensor = torch.zeros_like(mask_tensor)
             empty_mask_param = torch.nn.Parameter(empty_mask_tensor, requires_grad=False)
-            with torch.no_grad():
-                out_empty_phys = phys_model(empty_mask_param, xyz, Nphotons)
-                out_empty_cnn = cnn_model(empty_mask_param, xyz, Nphotons)
-            empty_phys_img = out_empty_phys.detach().cpu().squeeze().numpy()
-            empty_cnn_img = out_empty_cnn.detach().cpu().squeeze().numpy()
-            #empty_phys_path = os.path.join(out_dir, f"inference_empty_phys_{key}.tiff")
-            empty_cnn_path = os.path.join(out_dir, f"inference_empty_cnn_{key}.tiff")
+            empty_phys_img = run_inference(phys_model, empty_mask_param, xyz, Nphotons, config['device'])
+            empty_cnn_img = run_inference(cnn_model, empty_mask_param, xyz, Nphotons, config['device'])
             img_save_tiff(empty_phys_img[display_batch], out_dir, "empty_mask_camera", key)
-            #skimage.io.imsave(empty_phys_path, empty_phys_img[0])
-            
-            skimage.io.imsave(empty_cnn_path, empty_cnn_img[0])
-            #print(f"Saved empty mask inference for key {key} to {empty_phys_path} and {empty_cnn_path}")
+            img_save_tiff(empty_cnn_img[0], out_dir, "inference_empty_cnn", key)
 
-        # Optional: Paper mask inference if provided
+        # Paper mask inference
         if args.paper_mask:
-            with torch.no_grad():
-                out_paper_phys = phys_model(paper_mask_param, xyz, Nphotons)
-                out_paper_cnn = cnn_model(paper_mask_param, xyz, Nphotons)
-            paper_phys_img = out_paper_phys.detach().cpu().squeeze().numpy()
-            paper_cnn_img = out_paper_cnn.detach().cpu().squeeze().numpy()
-            #paper_phys_path = os.path.join(out_dir, f"inference_paper_camera_{key}.tiff")
-            paper_cnn_path = os.path.join(out_dir, f"inference_paper_cnn_{key}.tiff")
-            #skimage.io.imsave(paper_phys_path, paper_phys_img[0])
+            paper_mask_param = paper_mask_param.to(config['device'])
+            paper_phys_img = run_inference(phys_model, paper_mask_param, xyz, Nphotons, config['device'])
+            paper_cnn_img = run_inference(cnn_model, paper_mask_param, xyz, Nphotons, config['device'])
             img_save_tiff(paper_phys_img[display_batch], out_dir, "paper_mask_camera", key)
-            skimage.io.imsave(paper_cnn_path, paper_cnn_img[0])
-            #print(f"Saved paper mask inference for key {key} to {paper_phys_path} and {paper_cnn_path}")
+            img_save_tiff(paper_cnn_img[0], out_dir, "inference_paper_cnn", key)
 
 if __name__ == "__main__":
     main()

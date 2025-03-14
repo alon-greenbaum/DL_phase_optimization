@@ -1,4 +1,4 @@
-ntrain: 1000  # default 10000 how many images per epoch
+ntrain: 300  # default 10000 how many images per epoch
 nvalid: 100  # default 1000
 batch_size_gen: 2  # default 2
 # Number of emitters per image
@@ -41,8 +41,9 @@ ratio_input_output_image_size: 1  # default with Unet 1, with ResNet 4
 z_range_cost_function: 0 # default 1
 use_unet: true
 num_classes: 1
-lens_approach: "fresnel" # "fourier" or "fresnel"
+lens_approach: "convolution" # "fourier" or "fresnel"
 power_2: 1000 # pad to this power for fourier transform
 bfp_dir: "back_focal_plane"
 dropout: 0.5
 Nimgs: 3 # default 1
+conv3d: False
