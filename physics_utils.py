@@ -108,8 +108,10 @@ class poisson_noise_approx(nn.Module):
             input_poiss = input + torch.tensor(100) * torch.sqrt(input) * torch.randn(Nbatch, 1, self.Nimgs, self.H, self.W).type(
                 torch.FloatTensor).to(self.device)
         else:
-            input_poiss = input + torch.tensor(100) * torch.sqrt(input) * torch.randn(Nbatch, self.Nimgs, self.H, self.W).type(
-                torch.FloatTensor).to(self.device)
+            #input_poiss = input + torch.tensor(100) * torch.sqrt(input) * torch.randn(Nbatch, self.Nimgs, self.H, self.W).type(
+            #    torch.FloatTensor).to(self.device)
+            input_poiss = input + torch.tensor(100) * torch.sqrt(input) * torch.randn(Nbatch, 1, self.H, self.W).type(
+                torch.FloatTensor).to(self.device) # same noise applied to each z depth
         
         # if torch.isnan(input_poiss).any():
         #     print('yes')
@@ -178,10 +180,13 @@ class PhysicalLayer(nn.Module):
         refractive_index = config['refractive_index']
         max_defocus = config['max_defocus']
         image_volume = config['image_volume']
-        max_intensity = config['max_intensity']
         psf_keep_radius = config['psf_keep_radius']
         device = config['device']
         self.lens_approach = config['lens_approach']
+        if self.lens_approach == 'fresnel':
+            max_intensity = config.get('max_intensity_fresnel', 5.0e+4)
+        if self.lens_approach == 'convolution':
+            max_intensity = config.get('max_intensity_conv', 8.0e+10)
         self.device = device
         self.psf_keep_radius = psf_keep_radius
         self.N = N # the size of the FOV in pixels

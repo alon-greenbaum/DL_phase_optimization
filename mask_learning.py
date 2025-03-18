@@ -21,6 +21,7 @@ from beam_profile_gen import phase_gen
 import scipy.io as sio
 import hdf5storage  # new import for saving MATLAB 7.3 files
 
+# systemctl restart --user xdg-desktop-portal-gnome
 # nohup python mask_learning.py &> ./logs/$(date +'%Y%m%d-%H%M%S').txt &
 def list_to_range(lst):
     if len(lst) == 1:

@@ -32,7 +32,8 @@ max_defocus: 41  # um for generating the PSFs
 learning_rate_scheduler_factor: 0.1
 learning_rate_scheduler_patience: 5
 learning_rate_scheduler_patience_min_lr: 1.0e-6
-max_intensity: 5.0e+4 # convol: 1.0e+16
+max_intensity_conv: 8.0e+10 # convol: 5.0e+10, fresnel: 5e4
+max_intensity_fresnel: 5.0e+4
 # In case that the network needs to downsample the image, GPU memory issues
 ratio_input_output_image_size: 1  # default with Unet 1, with ResNet 4
 # How many planes to consider as right classification, besides the plane

@@ -47,10 +47,10 @@ class OpticsDesignUnet(nn.Module):
         # adding the physicalLayer into the mix
         self.Nimgs = config['Nimgs']
         self.physicalLayer = PhysicalLayer(config)
-        self.conv3d = config.get('conv3d', False)  # new flag for 3D convolutions
+        self.conv3d = config.get('conv3d', False)  # flag for 3D convolutions
         
         num_classes = config['num_classes']
-        dropout = config.get('dropout', 0.0)  # new dropout value from config
+        dropout = config.get('dropout', 0.0)  # dropout value from config
 
         # The code from //debuggercafe.com/unet-from-scratch-using-pytorch/
         
