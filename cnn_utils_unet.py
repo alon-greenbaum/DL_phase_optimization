@@ -89,7 +89,7 @@ class OpticsDesignUnet(nn.Module):
             
         else:
             self.norm = nn.BatchNorm3d(num_features=1, affine=True)
-            self.max_pool = nn.MaxPool3d(kernel_size=2, stride=2)
+            self.max_pool = nn.MaxPool3d(kernel_size=(1,2,2), stride=2)
             self.down_convolution_1 = double_convolution_3d(1, 64, dropout=dropout)
             self.down_convolution_2 = double_convolution_3d(64, 128, dropout=dropout)
             self.down_convolution_3 = double_convolution_3d(128, 256, dropout=dropout)
@@ -97,13 +97,13 @@ class OpticsDesignUnet(nn.Module):
             # Expanding path.
             self.up_transpose_1 = nn.ConvTranspose3d(
                 in_channels=256, out_channels=128,
-                kernel_size=2,
+                kernel_size=(1,2,2),
                 stride=2)
             self.up_convolution_1 = double_convolution_3d(256, 128, dropout=dropout)
 
             self.up_transpose_2 = nn.ConvTranspose3d(
                 in_channels=128, out_channels=64,
-                kernel_size=2,
+                kernel_size=(1,2,2),
                 stride=2)
             self.up_convolution_2 = double_convolution_3d(128, 64, dropout=dropout)
 

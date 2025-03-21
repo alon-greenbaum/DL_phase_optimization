@@ -5,7 +5,7 @@ import numpy as np
 import skimage.io
 import torch
 from datetime import datetime
-from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid, img_save_tiff, find_image_with_wildcard
+from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid, img_save_tiff, find_image_with_wildcard, other_planes_gt
 from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
 from physics_utils import PhysicalLayer  # physical model import
@@ -196,6 +196,9 @@ def main():
         if gt_img.dtype == np.bool_:
             gt_img = (gt_img.astype(np.uint8)) * 255
         img_save_tiff(gt_img[0], out_dir, "ground_truth", key)
+        # add multiple ground truths for each z plane
+        # for i in range()
+        #gt_imgother_planes_gt
 
         # Compute and log performance metrics
         compute_and_log_metrics(gt_img, cnn_img)
@@ -216,6 +219,19 @@ def main():
             paper_cnn_img = run_inference(cnn_model, paper_mask_param, xyz, Nphotons, config['device'])
             img_save_tiff(paper_phys_img[display_batch], out_dir, "paper_mask_camera", key)
             img_save_tiff(paper_cnn_img, out_dir, "inference_paper_cnn", key)
+            # Generate beam profile for paper mask
+            if args.generate_beam_profile:
+                paper_mask_np_for_beam = paper_mask_tensor.cpu().numpy()
+                mask_real = phase_mask_gen()
+                mask_param_for_beam = mask_real*np.exp(1j*paper_mask_np_for_beam)
+                beam_focused = beam_profile_focus(mask_param_for_beam)
+                paper_beam_3d_sections_filepath = beam_3d_sections_filepath + "_paper"
+                if not os.path.exists(paper_beam_3d_sections_filepath):
+                    os.makedirs(paper_beam_3d_sections_filepath)
+                beam_profile = beam_section(beam_focused, paper_beam_3d_sections_filepath, args.x_min, args.x_max,args.y_min,args.y_max)
+                beam_profile_out_path = os.path.join(out_dir, "beam_profile_paper_mask.tiff")
+                skimage.io.imsave(beam_profile_out_path, (beam_profile/1e6).astype(np.uint16))
+                print(f"Saved beam profile for paper mask to {beam_profile_out_path}")
 
 if __name__ == "__main__":
     main()

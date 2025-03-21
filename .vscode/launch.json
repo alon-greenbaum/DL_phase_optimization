@@ -9,9 +9,9 @@
             "console": "integratedTerminal",
             "args": [
                 "--input_dir",
-                "./training_results/phase_model_20250317-131932/",
+                "./training_results/phase_model_20250318-124455/",
                 "--epoch",
-                "101",
+                "201",
                 "--res_dir",
                 "inference_results",
                 "--num_inferences",

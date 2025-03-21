@@ -113,7 +113,7 @@ def beam_section(layer,output_folder,x_min,x_max,y_min,y_max):
         print(index)
         pro_x = angularSpec(layer,x_dist[index]*px) # beam in [z,x] plane (camera coordinates)
         #return pro_x.shape
-        profile[index] = pro_x[pro_x.shape[1]//2+y_min-1:pro_x.shape[1]//2+y_max,pro_x.shape[0]//2] # [z,y]
+        profile[index] = pro_x[pro_x.shape[0]//2,pro_x.shape[1]//2+y_min-1:pro_x.shape[1]//2+y_max] # [z,y]
         skimage.io.imsave(os.path.join(output_folder,str(index) + '.tiff'), (pro_x/1e7).astype('uint16'))
     return profile
 

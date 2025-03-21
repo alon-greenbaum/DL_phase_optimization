@@ -154,6 +154,32 @@ def batch_xyz_to_boolean_grid(xyz_np, config):
     boolean_grid = torch.from_numpy(boolean_grid).type(torch.FloatTensor)
     return boolean_grid
 
+def other_planes_gt(xyz_np, config, plane):
+
+
+    image_volume = config["image_volume"]
+    ratio_input_output_image_size = config["ratio_input_output_image_size"]
+    z_range_cost_function = config["z_range_cost_function"]
+
+    # number of particles
+    batch_size, num_particles = xyz_np[:, :, 2].shape
+    # set dimension
+    H = image_volume[0]
+    W = image_volume[1]
+    D = 1
+
+    boolean_grid = np.zeros((batch_size, 1, H // int(ratio_input_output_image_size), \
+                             W // int(ratio_input_output_image_size)))
+    for i in range(batch_size):
+        for j in range(num_particles):
+            z = xyz_np[i, j, 2]
+            if z == plane:
+                x = xyz_np[i, j, 0]
+                y = xyz_np[i, j, 1]
+                boolean_grid[i, 0, int(x // ratio_input_output_image_size), int(y // ratio_input_output_image_size)] = 1
+    boolean_grid = torch.from_numpy(boolean_grid).type(torch.FloatTensor)
+    return boolean_grid
+
 
 # ==============
 # continuous emitter positions sampling using two steps: first sampling disjoint indices on a coarse 3D grid,
