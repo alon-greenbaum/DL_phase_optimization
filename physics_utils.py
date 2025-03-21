@@ -29,6 +29,39 @@ def gaussian2D_unnormalized(shape=(7, 7), sigma=1.0):
     hV = torch.from_numpy(h).type(torch.FloatTensor)
     return hV
 
+def circular_aperature(arr,device):
+    """
+    Sets elements outside a centered circle to zero for a PyTorch tensor.
+
+    Args:
+    arr: A 2D square PyTorch tensor.
+
+    Returns:
+    A new PyTorch tensor with elements outside the circle set to zero.
+    """
+    h = arr.shape[0]
+    if arr.shape[1] != h:
+        raise ValueError("Input tensor must be square.")
+
+    center_x = (h - 1) / 2
+    center_y = (h - 1) / 2
+    radius = h / 2
+
+    # Create a meshgrid of coordinates
+    x = torch.arange(h)
+    y = torch.arange(h)
+    xx, yy = torch.meshgrid(x, y, indexing='ij')  # Use indexing='ij' for correct meshgrid
+
+    # Calculate the distance from each point to the center
+    distances = torch.sqrt((xx - center_x)**2 + (yy - center_y)**2)
+
+    # Create a mask where True indicates points inside the circle
+    mask = distances <= radius
+
+    # Apply the mask to the array
+    result = arr * mask.to(device)
+
+    return result
 
 def NextPowerOfTwo(number):
     # Returns next power of two following 'number'
@@ -200,6 +233,7 @@ class PhysicalLayer(nn.Module):
         self.conv3d = config.get('conv3d', False)
         if self.Nimgs % 2 == 0:
             raise ValueError('Nimgs must be odd')
+        self.aperature = config.get('aperature', False)
         
 
         # to transer the physical size of the imaging volume
@@ -320,6 +354,8 @@ class PhysicalLayer(nn.Module):
             #Fl = Fo * self.H # propogated through free space from the SLM to a plane directly incident on the lens
             Ul = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1)) # light directly infront of the lens
             Ul_cropped = Ul[:, :, -self.N:, -self.N:]
+            if self.aperature == True:
+                Ul_cropped = circular_aperature(Ul_cropped,self.device)
             #Ul_cropped = Ul[-self.N:, -self.N:]
             Ul_prime = Ul_cropped * self.B1 # light after the lens
             Ul_prime_pad = F.pad(Ul_prime, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft

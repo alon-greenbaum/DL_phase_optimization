@@ -1,4 +1,4 @@
-ntrain: 300  # default 10000 how many images per epoch
+ntrain: 100  # default 10000 how many images per epoch
 nvalid: 100  # default 1000
 batch_size_gen: 2  # default 2
 # Number of emitters per image
@@ -18,10 +18,10 @@ psf_edge_remove: 15
 psf_keep_radius: 15
 numerical_aperture: 0.6  # Relates to the resolution of the detection objective
 bead_radius: 1.0  # pixels 1.0 default, can change to make larger beads
-random_seed: 12345
+random_seed: 123456
 initial_learning_rate: 0.01
 batch_size: 1
-max_epochs: 101
+max_epochs: 201
 mask_phase_pixels: 500
 data_path: "beads_img_defocus"
 path_save: "data_mask_learning"
@@ -48,3 +48,4 @@ bfp_dir: "back_focal_plane"
 dropout: 0.5
 Nimgs: 3 # default 1
 conv3d: False
+aperature: True

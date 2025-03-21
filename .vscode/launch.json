@@ -9,9 +9,9 @@
             "console": "integratedTerminal",
             "args": [
                 "--input_dir",
-                "./training_results/phase_model_20250317-112419/",
+                "./training_results/phase_model_20250317-131932/",
                 "--epoch",
-                "1",
+                "101",
                 "--res_dir",
                 "inference_results",
                 "--num_inferences",
@@ -19,12 +19,12 @@
                 //"--lens_approach",
                 //"fresnel",
                 "--empty_mask",
-                //"--paper_mask",
-                //"example_optimized_phase.tiff",
+                "--paper_mask",
+                "example_optimized_phase.tiff",
                 //"--no_noise",
-                "--max_intensity",
-                "8.0e+10", // 5e4, 5e10
-                //"--generate_beam_profile"
+                //"--max_intensity",
+                //"8.0e+10", // 5e4, 5e10
+                "--generate_beam_profile"
 
             ]
         },

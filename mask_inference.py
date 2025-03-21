@@ -12,7 +12,7 @@ from physics_utils import PhysicalLayer  # physical model import
 from beam_profile_gen import beam_profile_focus, beam_section, phase_mask_gen
 from metrics import compute_metrics
 
-def run_inference(model, mask_param, xyz, Nphotons, device):
+def run_inference(model, mask_param, xyz, Nphotons, device, model_type = None):
     """
     Runs inference using the given model.
 
@@ -28,6 +28,8 @@ def run_inference(model, mask_param, xyz, Nphotons, device):
     """
     with torch.no_grad():
         out = model(mask_param, xyz, Nphotons)
+    if model_type == "cnn":
+        out = torch.sigmoid(out)
     return out.detach().cpu().squeeze().numpy()
 
 def compute_and_log_metrics(gt_img, cnn_img):
@@ -82,7 +84,8 @@ def main():
         model_file = f"net_{chosen_epoch - 1}.pt"
         args.model_path = os.path.join(args.input_dir, model_file)
         print(f"Automatically using CNN model: {args.model_path}")
-
+        
+    
     display_batch = 0  # Display the first image in the batch
     
     # Load configuration and set device
@@ -99,6 +102,8 @@ def main():
         
     if type(config['px']) == str:
         config['px'] = float(config['px'])
+        
+    config["model_path"] = args.model_path
 
     # Load mask from tiff file (for both models)
     mask_path = find_image_with_wildcard(args.input_dir, f"mask_phase_epoch_{args.epoch-1}_", "tiff")
@@ -181,8 +186,8 @@ def main():
         img_save_tiff(phys_img[display_batch], out_dir, "learned_mask_camera", key)
 
         # CNN layer inference
-        cnn_img = run_inference(cnn_model, mask_param, xyz, Nphotons, config['device'])
-        img_save_tiff(cnn_img[0], out_dir, "inference_cnn", key)
+        cnn_img = run_inference(cnn_model, mask_param, xyz, Nphotons, config['device'],'cnn')
+        img_save_tiff(cnn_img, out_dir, "inference_cnn", key)
 
         # Save ground truth
         gt_img = batch_xyz_to_boolean_grid(xyz_np, config)
@@ -202,7 +207,7 @@ def main():
             empty_phys_img = run_inference(phys_model, empty_mask_param, xyz, Nphotons, config['device'])
             empty_cnn_img = run_inference(cnn_model, empty_mask_param, xyz, Nphotons, config['device'])
             img_save_tiff(empty_phys_img[display_batch], out_dir, "empty_mask_camera", key)
-            img_save_tiff(empty_cnn_img[0], out_dir, "inference_empty_cnn", key)
+            img_save_tiff(empty_cnn_img, out_dir, "inference_empty_cnn", key)
 
         # Paper mask inference
         if args.paper_mask:
@@ -210,7 +215,7 @@ def main():
             paper_phys_img = run_inference(phys_model, paper_mask_param, xyz, Nphotons, config['device'])
             paper_cnn_img = run_inference(cnn_model, paper_mask_param, xyz, Nphotons, config['device'])
             img_save_tiff(paper_phys_img[display_batch], out_dir, "paper_mask_camera", key)
-            img_save_tiff(paper_cnn_img[0], out_dir, "inference_paper_cnn", key)
+            img_save_tiff(paper_cnn_img, out_dir, "inference_paper_cnn", key)
 
 if __name__ == "__main__":
     main()
