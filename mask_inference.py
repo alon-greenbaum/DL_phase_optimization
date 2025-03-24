@@ -10,7 +10,7 @@ from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
 from physics_utils import PhysicalLayer  # physical model import
 from beam_profile_gen import beam_profile_focus, beam_section, phase_mask_gen
-from metrics import compute_metrics
+from metrics import compute_and_log_metrics, save_heatmap
 
 def run_inference(model, mask_param, xyz, Nphotons, device, model_type = None):
     """
@@ -31,19 +31,6 @@ def run_inference(model, mask_param, xyz, Nphotons, device, model_type = None):
     if model_type == "cnn":
         out = torch.sigmoid(out)
     return out.detach().cpu().squeeze().numpy()
-
-def compute_and_log_metrics(gt_img, cnn_img):
-    """
-    Computes and logs performance metrics for the full image.
-
-    Args:
-        gt_img (np.ndarray): The ground truth image.
-        cnn_img (np.ndarray): The CNN inference image.
-    """
-    gt_full = gt_img[0]
-    cnn_full = cnn_img[0]
-    precision, recall, f1 = compute_metrics(gt_full, cnn_full)
-    print(f"Full image: Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
 
 def main():
     """
@@ -68,7 +55,7 @@ def main():
     parser.add_argument("--x_max", type=int, default=100, help="Maximum z value for beam section generation")
     parser.add_argument("--y_min", type=int, default=-50, help="Minimum y value for beam section generation")
     parser.add_argument("--y_max", type=int, default=50, help="Maximum y value for beam section generation")
-    parser.add_argument("--max_intensity", type=float, default=5.0e+4, help="Maximum intensity for the mask (default: 5e4)")
+    parser.add_argument("--max_intensity", type=float, help="Maximum intensity for the mask")
     args = parser.parse_args()
 
     # Automatically determine CNN model path if not provided
@@ -153,8 +140,8 @@ def main():
     # Save updated configuration in out_dir
     config_output_path = os.path.join(out_dir, "config.yaml")
     with open(config_output_path, "w") as f:
-        for key, value in config.items():
-            f.write(f"{key}: {value}\n")
+        for batch, value in config.items():
+            f.write(f"{batch}: {value}\n")
     
     # Generate and save beam profile for the input mask
     if args.generate_beam_profile:
@@ -175,50 +162,54 @@ def main():
         print(f"Saved beam profile for input mask to {beam_profile_out_path}")
 
     # Run inference for each selected key
-    for key in selected_keys:
-        data = labels_dict[key]
+    for batch in selected_keys:
+        data = labels_dict[batch]
         xyz_np = data['xyz']
         xyz = torch.tensor(xyz_np, dtype=torch.float32).to(config['device'])
         Nphotons = torch.tensor(data['N'], dtype=torch.float32).to(config['device'])
 
         # Physical layer inference
         phys_img = run_inference(phys_model, mask_param, xyz, Nphotons, config['device'])
-        img_save_tiff(phys_img[display_batch], out_dir, "learned_mask_camera", key)
+        img_save_tiff(phys_img[display_batch], out_dir, "learned_mask_camera", batch)
 
         # CNN layer inference
         cnn_img = run_inference(cnn_model, mask_param, xyz, Nphotons, config['device'],'cnn')
-        img_save_tiff(cnn_img, out_dir, "inference_cnn", key)
+        img_save_tiff(cnn_img[0], out_dir, "inference_cnn", batch)
 
         # Save ground truth
         gt_img = batch_xyz_to_boolean_grid(xyz_np, config)
         if torch.is_tensor(gt_img):
-            gt_img = gt_img.detach().cpu().numpy()
+            gt_img = gt_img.detach().squeeze().cpu().numpy()
         if gt_img.dtype == np.bool_:
             gt_img = (gt_img.astype(np.uint8)) * 255
-        img_save_tiff(gt_img[0], out_dir, "ground_truth", key)
+        img_save_tiff(gt_img[0], out_dir, "ground_truth", batch)
         # add multiple ground truths for each z plane
         # for i in range()
         #gt_imgother_planes_gt
 
         # Compute and log performance metrics
-        compute_and_log_metrics(gt_img, cnn_img)
+        compute_and_log_metrics(gt_img[0], cnn_img[0], out_dir,"learned_mask")
+        save_heatmap(cnn_img[0], out_dir, "heatmap_cnn")
+        # save performance metrics to txt file
+        
 
         # Empty mask inference
         if args.empty_mask:
             empty_mask_tensor = torch.zeros_like(mask_tensor)
             empty_mask_param = torch.nn.Parameter(empty_mask_tensor, requires_grad=False)
             empty_phys_img = run_inference(phys_model, empty_mask_param, xyz, Nphotons, config['device'])
-            empty_cnn_img = run_inference(cnn_model, empty_mask_param, xyz, Nphotons, config['device'])
-            img_save_tiff(empty_phys_img[display_batch], out_dir, "empty_mask_camera", key)
-            img_save_tiff(empty_cnn_img, out_dir, "inference_empty_cnn", key)
+            empty_cnn_img = run_inference(cnn_model, empty_mask_param, xyz, Nphotons, config['device'],"cnn")
+            img_save_tiff(empty_phys_img[display_batch], out_dir, "empty_mask_camera", batch)
+            img_save_tiff(empty_cnn_img[0], out_dir, "inference_empty_cnn", batch)
 
         # Paper mask inference
         if args.paper_mask:
             paper_mask_param = paper_mask_param.to(config['device'])
             paper_phys_img = run_inference(phys_model, paper_mask_param, xyz, Nphotons, config['device'])
-            paper_cnn_img = run_inference(cnn_model, paper_mask_param, xyz, Nphotons, config['device'])
-            img_save_tiff(paper_phys_img[display_batch], out_dir, "paper_mask_camera", key)
-            img_save_tiff(paper_cnn_img, out_dir, "inference_paper_cnn", key)
+            paper_cnn_img = run_inference(cnn_model, paper_mask_param, xyz, Nphotons, config['device'],"cnn")
+            img_save_tiff(paper_phys_img[display_batch], out_dir, "paper_mask_camera", batch)
+            img_save_tiff(paper_cnn_img[0], out_dir, "inference_paper_cnn", batch)
+            
             # Generate beam profile for paper mask
             if args.generate_beam_profile:
                 paper_mask_np_for_beam = paper_mask_tensor.cpu().numpy()

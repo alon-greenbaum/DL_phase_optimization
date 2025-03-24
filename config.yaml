@@ -1,8 +1,8 @@
-ntrain: 100  # default 10000 how many images per epoch
-nvalid: 100  # default 1000
+ntrain: 1000  # default 10000 how many images per epoch
+nvalid: 0  # default 1000
 batch_size_gen: 2  # default 2
 # Number of emitters per image
-num_particles_range: [800, 801]  # with a strong gpu [450, 550]
+num_particles_range: [500, 501]  # with a strong gpu [450, 550]
 image_volume: [200, 200, 30]  # the volume of imaging each dimension in um (i think these are in camera coordinates)
 particle_spatial_range_xy: [15, 185]  # dependence on the volume size default 200 um
 # um, to avoid edges of the image so 15 um away
@@ -18,7 +18,7 @@ psf_edge_remove: 15
 psf_keep_radius: 15
 numerical_aperture: 0.6  # Relates to the resolution of the detection objective
 bead_radius: 1.0  # pixels 1.0 default, can change to make larger beads
-random_seed: 12345
+random_seed: 1234
 initial_learning_rate: 0.01
 batch_size: 1
 max_epochs: 201
@@ -46,6 +46,6 @@ lens_approach: "convolution" # "fourier" or "fresnel"
 power_2: 1000 # pad to this power for fourier transform
 bfp_dir: "back_focal_plane"
 dropout: 0.5
-Nimgs: 3 # default 1
-conv3d: True
+Nimgs: 5 # default 1
+conv3d: False
 aperature: True

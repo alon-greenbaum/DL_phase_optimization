@@ -9,7 +9,7 @@
             "console": "integratedTerminal",
             "args": [
                 "--input_dir",
-                "./training_results/phase_model_20250318-124455/",
+                "./training_results/phase_model_20250321-160212/",
                 "--epoch",
                 "201",
                 "--res_dir",
@@ -24,7 +24,7 @@
                 //"--no_noise",
                 //"--max_intensity",
                 //"8.0e+10", // 5e4, 5e10
-                "--generate_beam_profile"
+                //"--generate_beam_profile"
 
             ]
         },
