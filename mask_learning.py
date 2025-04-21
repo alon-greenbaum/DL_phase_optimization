@@ -138,6 +138,15 @@ def learn_mask(config,res_dir):
     learning_rate_scheduler_patience_min_lr = config['learning_rate_scheduler_patience_min_lr']
     device = config['device']
     use_unet = config['use_unet']
+    z_spacing = config.get('z_spacing', 0)
+    z_img_mode = config.get('z_img_mode', 'edgecenter')
+    if z_img_mode == 'edgecenter' and z_spacing > 0:
+            z_depth_list = [-z_spacing, 0, z_spacing]
+    else:
+        z_depth_list = list(range(-z_spacing,z_spacing+1))
+    Nimgs = len(z_depth_list)
+    config['Nimgs'] = Nimgs
+    
 
     
     # train on GPU if available
@@ -352,6 +361,9 @@ if __name__ == '__main__':
         "num_classes": 1
     }
     """
+    
+
+    
     # set results folder
     model_name = f"phase_model_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     res_dir = os.path.join('training_results', model_name)
