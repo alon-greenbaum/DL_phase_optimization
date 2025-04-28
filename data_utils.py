@@ -101,26 +101,61 @@ def complex_to_tensor(phases_np):
 
 
 # Define a batch data generator for training and testing
-def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, particle_spatial_range_z, seed=None):
-    # if we're testing then seed the random generator
+def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, particle_spatial_range_z, seed=None, z_coupled_ratio=0.0, z_coupled_spacing_range=None):
+    """
+    Generate a batch of bead locations, with an option to include a mixture of random beads and z-coupled bead pairs.
+    Args:
+        batch_size: Number of images in the batch.
+        num_particles_range: [min, max] number of beads per image.
+        particle_spatial_range_xy: allowed x/y positions.
+        particle_spatial_range_z: allowed z positions.
+        seed: random seed.
+        z_coupled_ratio: fraction of beads that are z-coupled pairs (0.0 = all random, 1.0 = all z-coupled).
+        z_coupled_spacing_range: [min, max] allowed z spacing for z-coupled pairs (inclusive).
+    Returns:
+        xyz_grid: (batch_size, num_particles, 3) array of bead positions.
+        Nphotons: (batch_size, num_particles) array of photon counts.
+    """
     #if seed is not None:
     #    np.random.seed(seed)
+    #    random.seed(seed)
 
-    # upper and lower limits for the number fo emitters
     num_particles = np.random.randint(num_particles_range[0], num_particles_range[1], 1).item()
-
-    # range of signal counts assuming a uniform distribution
-    # not sure what Chen wanted to achieve but it is uniform
     Nsig_range = [10000, 10001]  # in [counts]
-    Nphotons = np.random.randint(Nsig_range[0], Nsig_range[1], (batch_size, num_particles))
-    Nphotons = Nphotons.astype('float32')
+    Nphotons = np.random.randint(Nsig_range[0], Nsig_range[1], (batch_size, num_particles)).astype('float32')
 
     xyz_grid = np.zeros((batch_size, num_particles, 3)).astype('int')
     for k in range(batch_size):
-        xyz_grid[k, :, 0] = random.choices(particle_spatial_range_xy, k=num_particles)  # in pixel
-        xyz_grid[k, :, 1] = random.choices(particle_spatial_range_xy, k=num_particles)  # in pixel
-        xyz_grid[k, :, 2] = random.choices(particle_spatial_range_z, k=num_particles)  # in pixel
-
+        n_z_coupled = int(num_particles * z_coupled_ratio // 2) * 2  # must be even, each pair is 2 beads
+        n_random = num_particles - n_z_coupled
+        beads = []
+        # Generate z-coupled pairs
+        for _ in range(n_z_coupled // 2):
+            x = random.choice(particle_spatial_range_xy)
+            y = random.choice(particle_spatial_range_xy)
+            z1 = random.choice(particle_spatial_range_z)
+            if z_coupled_spacing_range is not None:
+                min_spacing, max_spacing = z_coupled_spacing_range
+                possible_spacings = [s for s in range(min_spacing, max_spacing+1) if (z1 + s) in particle_spatial_range_z]
+                if not possible_spacings:
+                    # fallback: just pick another z
+                    z2 = random.choice(particle_spatial_range_z)
+                else:
+                    spacing = random.choice(possible_spacings)
+                    z2 = z1 + spacing
+            else:
+                z2 = random.choice(particle_spatial_range_z)
+            beads.append([x, y, z1])
+            beads.append([x, y, z2])
+        # Generate remaining random beads
+        for _ in range(n_random):
+            x = random.choice(particle_spatial_range_xy)
+            y = random.choice(particle_spatial_range_xy)
+            z = random.choice(particle_spatial_range_z)
+            beads.append([x, y, z])
+        # Shuffle to avoid ordering bias
+        random.shuffle(beads)
+        xyz_grid[k, :, :] = np.array(beads)
     return xyz_grid, Nphotons
 
 
@@ -179,6 +214,30 @@ def other_planes_gt(xyz_np, config, plane):
                 boolean_grid[i, 0, int(x // ratio_input_output_image_size), int(y // ratio_input_output_image_size)] = 1
     boolean_grid = torch.from_numpy(boolean_grid).type(torch.FloatTensor)
     return boolean_grid
+
+
+def batch_xyz_to_3d_volume(xyz_np, config):
+    """
+    Converts batch xyz bead locations to a 3D binary volume for each batch.
+    Args:
+        xyz_np: (batch_size, num_particles, 3) array of bead positions.
+        config: dict with keys 'image_volume' (list/tuple of [H, W, D])
+    Returns:
+        volumes: (batch_size, D, H, W) numpy array, 1 where bead exists, 0 elsewhere
+    """
+    image_volume = config["image_volume"]  # [H, W, D]
+    H, W, D = image_volume
+    batch_size, num_particles, _ = xyz_np.shape
+    volumes = np.zeros((batch_size, D, H, W), dtype=np.uint8)
+    for i in range(batch_size):
+        for j in range(num_particles):
+            x = xyz_np[i, j, 0]
+            y = xyz_np[i, j, 1]
+            z = xyz_np[i, j, 2]
+            # Check bounds
+            if 0 <= x < H and 0 <= y < W and 0 <= z < D:
+                volumes[i, z, x, y] = 1
+    return volumes
 
 
 # ==============
