@@ -235,9 +235,29 @@ def batch_xyz_to_3d_volume(xyz_np, config):
             y = xyz_np[i, j, 1]
             z = xyz_np[i, j, 2]
             # Check bounds
-            if 0 <= x < H and 0 <= y < W and 0 <= z < D:
-                volumes[i, z, x, y] = 1
+            if 0 <= x < H and 0 <= y < W and -D//2 <= z < D//2:
+                volumes[i, z+D//2, x, y] = 1
     return volumes
+
+
+def save_3d_volume_as_tiffs(volume, out_dir, base_name):
+    """
+    Save a 3D numpy array (D, H, W) as a series of 2D tiff images, one per z-slice, in a unique subfolder.
+    Args:
+        volume: 3D numpy array (D, H, W)
+        out_dir: directory to save images
+        base_name: base filename for each slice and subfolder name
+    """
+    import os
+    import skimage.io
+    subfolder = os.path.join(out_dir, base_name)
+    os.makedirs(subfolder, exist_ok=True)
+    D = volume.shape[0]
+    for z in range(D):
+        fname = os.path.join(subfolder, f"{base_name}_z{z:02d}.tiff")
+        # Save as 8-bit, 255 for bead, 0 for background
+        img8 = (volume[z] * 255).astype(np.uint8)
+        skimage.io.imsave(fname, img8)
 
 
 # ==============
@@ -302,4 +322,42 @@ def save_output_layer(output_layer, base_dir, lens_approach, counter, datetime, 
                 file.write(f'{key}: {value}\n')
 
 if __name__ == '__main__':
-    generate_batch(8)
+    import datetime
+    # Example config (edit as needed)
+    config = {
+        "image_volume": [200, 200, 30],  # [H, W, D]
+        "num_particles_range": [50, 51],
+        "particle_spatial_range_xy": range(15, 185),
+        "particle_spatial_range_z": range(-10, 11),
+    }
+    batch_size = 1
+    dt_str = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_dir = os.path.join("visualization_examples", dt_str)
+    os.makedirs(out_dir, exist_ok=True)
+
+    # 1. Visualize random beads (no z-coupling)
+    xyz_rand, _ = generate_batch(
+        batch_size,
+        config["num_particles_range"],
+        config["particle_spatial_range_xy"],
+        config["particle_spatial_range_z"],
+        seed=42,
+        z_coupled_ratio=0.0
+    )
+    vol_rand = batch_xyz_to_3d_volume(xyz_rand, config)[0]
+    save_3d_volume_as_tiffs(vol_rand, out_dir, "random_beads")
+    print("Saved random bead 3D volume slices to:", os.path.join(out_dir, "random_beads"))
+
+    # 2. Visualize z-coupled beads (50% z-coupled)
+    xyz_zc, _ = generate_batch(
+        batch_size,
+        config["num_particles_range"],
+        config["particle_spatial_range_xy"],
+        config["particle_spatial_range_z"],
+        seed=43,
+        z_coupled_ratio=0.5,
+        z_coupled_spacing_range=(2, 5)
+    )
+    vol_zc = batch_xyz_to_3d_volume(xyz_zc, config)[0]
+    save_3d_volume_as_tiffs(vol_zc, out_dir, "z_coupled_beads")
+    print("Saved z-coupled bead 3D volume slices to:", os.path.join(out_dir, "z_coupled_beads"))
