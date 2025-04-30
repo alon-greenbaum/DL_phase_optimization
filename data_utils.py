@@ -101,7 +101,7 @@ def complex_to_tensor(phases_np):
 
 
 # Define a batch data generator for training and testing
-def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, particle_spatial_range_z, seed=None, z_coupled_ratio=0.0, z_coupled_spacing_range=None):
+def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, particle_spatial_range_z, z_coupled_ratio=0.0, z_coupled_spacing_range=None):
     """
     Generate a batch of bead locations, with an option to include a mixture of random beads and z-coupled bead pairs.
     Args:
@@ -125,10 +125,12 @@ def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, p
     Nphotons = np.random.randint(Nsig_range[0], Nsig_range[1], (batch_size, num_particles)).astype('float32')
 
     xyz_grid = np.zeros((batch_size, num_particles, 3)).astype('int')
+    between_beads_grid = [] # this is a list of variable length
     for k in range(batch_size):
         n_z_coupled = int(num_particles * z_coupled_ratio // 2) * 2  # must be even, each pair is 2 beads
         n_random = num_particles - n_z_coupled
         beads = []
+        between_beads = []
         # Generate z-coupled pairs
         for _ in range(n_z_coupled // 2):
             x = random.choice(particle_spatial_range_xy)
@@ -143,6 +145,10 @@ def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, p
                 else:
                     spacing = random.choice(possible_spacings)
                     z2 = z1 + spacing
+                    # here i want to append to a seperate list each between bead location
+                    for u in range(z1+1,z2):
+                        between_beads.append([x, y, u])
+                    
             else:
                 z2 = random.choice(particle_spatial_range_z)
             beads.append([x, y, z1])
@@ -155,8 +161,13 @@ def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, p
             beads.append([x, y, z])
         # Shuffle to avoid ordering bias
         random.shuffle(beads)
+        #random.shuffle(between_beads) 
+        between_beads_grid.append(np.array(between_beads))
         xyz_grid[k, :, :] = np.array(beads)
-    return xyz_grid, Nphotons
+    if n_z_coupled > 0:
+        return xyz_grid, between_beads_grid
+    else:
+        return xyz_grid, Nphotons
 
 
 # ==================================
@@ -240,6 +251,54 @@ def batch_xyz_to_3d_volume(xyz_np, config):
     return volumes
 
 
+def batch_xyz_to_3class_volume(xyz_np, xyz_between_beads, config):
+    """
+    Converts batch xyz bead locations to a 3-class 3D volume for each batch.
+    Class 0: background
+    Class 1: bead
+    Class 2: between-bead (direct z-line between z-coupled pairs)
+    Args:
+        xyz_np: (batch_size, num_particles, 3) array of bead positions.
+        config: dict with keys 'image_volume' (list/tuple of [H, W, D])
+        z_coupled_ratio: fraction of beads that are z-coupled pairs
+        z_coupled_spacing_range: [min, max] allowed z spacing for z-coupled pairs (inclusive)
+        between_bead_class: if True, mark between-bead voxels as class 2
+    Returns:
+        volumes: (batch_size, D, H, W) numpy array, values 0, 1, 2
+    """
+    image_volume = config["image_volume"]  # [H, W, D]
+    H, W, D = image_volume
+    batch_size, num_particles, _ = xyz_np.shape
+    volumes = np.zeros((batch_size, D, H, W))
+    for k in range(batch_size):
+        """
+        z_coupled_pairs = []
+        if z_coupled_ratio > 0 and between_bead_class:
+            n_z_coupled = int(num_particles * z_coupled_ratio // 2) * 2
+            # z-coupled pairs are always first in the list (see generate_batch)
+            for i in range(0, n_z_coupled, 2):
+                x1, y1, z1 = xyz_np[k, i]
+                x2, y2, z2 = xyz_np[k, i+1]
+                if x1 == x2 and y1 == y2:
+                    z_coupled_pairs.append(((int(x1), int(y1), int(z1)), (int(x2), int(y2), int(z2))))
+        """
+        # Mark beads
+        for j in range(num_particles):
+            x = int(xyz_np[k, j, 0])
+            y = int(xyz_np[k, j, 1])
+            z = int(xyz_np[k, j, 2])
+            if 0 <= x < H and 0 <= y < W and -D//2 <= z < D//2:
+                volumes[k, z, x, y] = 1
+        # Mark between-bead class
+        for m in range(len(xyz_between_beads[k])):
+            x = int(xyz_between_beads[k][m, 0])
+            y = int(xyz_between_beads[k][m, 1])
+            z = int(xyz_between_beads[k][m, 2])
+            if 0 <= x < H and 0 <= y < W and -D//2 <= z < D//2:
+                volumes[k, z, x, y] = 0.5
+    return volumes
+
+
 def save_3d_volume_as_tiffs(volume, out_dir, base_name):
     """
     Save a 3D numpy array (D, H, W) as a series of 2D tiff images, one per z-slice, in a unique subfolder.
@@ -252,12 +311,15 @@ def save_3d_volume_as_tiffs(volume, out_dir, base_name):
     import skimage.io
     subfolder = os.path.join(out_dir, base_name)
     os.makedirs(subfolder, exist_ok=True)
-    D = volume.shape[0]
-    for z in range(D):
-        fname = os.path.join(subfolder, f"{base_name}_z{z:02d}.tiff")
-        # Save as 8-bit, 255 for bead, 0 for background
-        img8 = (volume[z] * 255).astype(np.uint8)
-        skimage.io.imsave(fname, img8)
+    D = volume.shape[1]
+    for k in range(# shape of volume in 1st dimension
+        volume.shape[0]):
+        for z in range(D):
+            fname = os.path.join(subfolder, f"{base_name}_z{z:02d}.tiff")
+            # Save as 8-bit, 255 for bead, 0 for background
+            img8 = (volume[k][z]*255).astype(np.uint8)
+            skimage.io.imsave(fname, img8)
+        break # to only make one batch image for now
 
 
 # ==============
@@ -330,11 +392,11 @@ if __name__ == '__main__':
         "particle_spatial_range_xy": range(15, 185),
         "particle_spatial_range_z": range(-10, 11),
     }
-    batch_size = 1
+    batch_size = 2
     dt_str = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir = os.path.join("visualization_examples", dt_str)
     os.makedirs(out_dir, exist_ok=True)
-
+    """
     # 1. Visualize random beads (no z-coupling)
     xyz_rand, _ = generate_batch(
         batch_size,
@@ -361,3 +423,19 @@ if __name__ == '__main__':
     vol_zc = batch_xyz_to_3d_volume(xyz_zc, config)[0]
     save_3d_volume_as_tiffs(vol_zc, out_dir, "z_coupled_beads")
     print("Saved z-coupled bead 3D volume slices to:", os.path.join(out_dir, "z_coupled_beads"))
+    """
+    # 3. Visualize z-coupled beads with between-bead class (3-class volume)
+    xyz_zc3, xyz_between_beads = generate_batch(
+        batch_size,
+        config["num_particles_range"],
+        config["particle_spatial_range_xy"],
+        config["particle_spatial_range_z"],
+        seed=44,
+        z_coupled_ratio=0.5,
+        z_coupled_spacing_range=(2, 5)
+    )
+    vol_zc3 = batch_xyz_to_3class_volume(xyz_zc3, xyz_between_beads, config)
+    # Save all three classes in one image: 0=background, 127=between beads, 255=beads
+
+    save_3d_volume_as_tiffs(vol_zc3, out_dir, "z_coupled_beads_3class")
+    print("Saved 3-class (background, between, bead) 3D volume slices to:", os.path.join(out_dir, "z_coupled_beads_3class"))

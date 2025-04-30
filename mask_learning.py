@@ -125,7 +125,6 @@ def learn_mask(config,res_dir):
     ntrain = config['ntrain']
     nvalid = config['nvalid']
     batch_size_gen = config['batch_size_gen']
-    
     initial_learning_rate = config['initial_learning_rate']
     batch_size = config['batch_size']
     max_epochs = config['max_epochs']
@@ -146,6 +145,8 @@ def learn_mask(config,res_dir):
         z_depth_list = list(range(-z_spacing,z_spacing+1))
     Nimgs = len(z_depth_list)
     config['Nimgs'] = Nimgs
+    z_coupled_ratio = config.get('z_coupled_ratio',0)
+    z_coupled_spacing_range = config.get('z_coupled_spacing_range',0)
     
 
     
