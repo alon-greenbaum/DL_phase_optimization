@@ -17,9 +17,9 @@ from data_utils import PhasesOnlineDataset, savePhaseMask, generate_batch, load_
 from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
 from loss_utils import KDE_loss3D, jaccard_coeff
-from beam_profile_gen import phase_gen
+#from beam_profile_gen import phase_gen
 import scipy.io as sio
-import hdf5storage  # new import for saving MATLAB 7.3 files
+#import hdf5storage  # new import for saving MATLAB 7.3 files
 
 # systemctl restart --user xdg-desktop-portal-gnome
 # nohup python mask_learning.py &> ./logs/$(date +'%Y%m%d-%H%M%S').txt &
@@ -39,6 +39,8 @@ def gen_data(config, res_dir):
     particle_spatial_range_xy = list_to_range(config['particle_spatial_range_xy'])
     particle_spatial_range_z = list_to_range(config['particle_spatial_range_z'])
     num_particles_range = config['num_particles_range']
+    z_coupled_ratio = config.get('z_coupled_ratio',0)
+    z_coupled_spacing_range = config.get('z_coupled_spacing_range',(0,0))
     #device = config['device']
     #path_train = config['path_train']
     
@@ -67,25 +69,27 @@ def gen_data(config, res_dir):
     labels_dict = {}
     for i in range(ntrain_batches):
         # sample a training example
-        xyz, Nphotons = generate_batch(batch_size_gen, num_particles_range, particle_spatial_range_xy,
-                                       particle_spatial_range_z)
-        labels_dict[str(i)] = {'xyz': xyz, 'N': Nphotons}
+        xyz, xyz_between_beads = generate_batch(batch_size_gen, num_particles_range, particle_spatial_range_xy,
+                                       particle_spatial_range_z, z_coupled_ratio, 
+                                       z_coupled_spacing_range)
+        labels_dict[str(i)] = {'xyz': xyz, 'xyz_between_beads': xyz_between_beads}
         # print number of example
         print('Training Example [%d / %d]' % (i + 1, ntrain_batches))
 
     nvalid_batches = int(nvalid / batch_size_gen)
     for i in range(nvalid_batches):
-        xyz, Nphotons = generate_batch(batch_size_gen, num_particles_range, particle_spatial_range_xy,
-                                       particle_spatial_range_z)
-        labels_dict[str(i + ntrain_batches)] = {'xyz': xyz, 'N': Nphotons}
+        xyz, xyz_between_beads = generate_batch(batch_size_gen, num_particles_range, particle_spatial_range_xy,
+                                       particle_spatial_range_z, z_coupled_ratio, 
+                                       z_coupled_spacing_range)
+        labels_dict[str(i + ntrain_batches)] = {'xyz': xyz, 'xyz_between_beads': xyz_between_beads}
         print('Validation Example [%d / %d]' % (i + 1, nvalid_batches))
 
     path_labels = os.path.join(res_dir,'labels.pickle')
     with open(path_labels, 'wb') as handle:
         pickle.dump(labels_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
     # Save labels_dict in .mat format as MATLAB 7.3
-    path_labels_mat = os.path.join(res_dir, 'labels.mat')
-    hdf5storage.savemat(path_labels_mat, labels_dict, matlab_ver='7.3')
+    #path_labels_mat = os.path.join(res_dir, 'labels.mat')
+    #hdf5storage.savemat(path_labels_mat, labels_dict, matlab_ver='7.3')
 
 # AG this part is generating the images of the defocused images at different planes 
 # the code will save these images as template for future use.
@@ -129,9 +133,9 @@ def learn_mask(config,res_dir):
     batch_size = config['batch_size']
     max_epochs = config['max_epochs']
     mask_phase_pixels = config['mask_phase_pixels']
-    psf_width_meters = config['psf_width_pixels'] * config['px']
-    path_save = config['path_save']
-    path_train = config['path_train']
+    #psf_width_meters = config['psf_width_pixels'] * config['px']
+    #path_save = config['path_save']
+    #path_train = config['path_train']
     learning_rate_scheduler_factor = config['learning_rate_scheduler_factor']
     learning_rate_scheduler_patience = config['learning_rate_scheduler_patience']
     learning_rate_scheduler_patience_min_lr = config['learning_rate_scheduler_patience_min_lr']
@@ -140,13 +144,13 @@ def learn_mask(config,res_dir):
     z_spacing = config.get('z_spacing', 0)
     z_img_mode = config.get('z_img_mode', 'edgecenter')
     if z_img_mode == 'edgecenter' and z_spacing > 0:
-            z_depth_list = [-z_spacing, 0, z_spacing]
+        z_depth_list = [-z_spacing, 0, z_spacing]
     else:
         z_depth_list = list(range(-z_spacing,z_spacing+1))
     Nimgs = len(z_depth_list)
     config['Nimgs'] = Nimgs
-    z_coupled_ratio = config.get('z_coupled_ratio',0)
-    z_coupled_spacing_range = config.get('z_coupled_spacing_range',0)
+    
+    num_classes = config['num_classes']
     
 
     
@@ -182,7 +186,7 @@ def learn_mask(config,res_dir):
     
     # parameters for data loaders batch size is 1 because examples are generated 16 at a time
     params_train = {'batch_size': batch_size, 'shuffle': True}
-    params_valid = {'batch_size': batch_size, 'shuffle': False}
+    #params_valid = {'batch_size': batch_size, 'shuffle': False}
     ntrain_batches = int(ntrain/batch_size_gen)
     nvalid_batches = int(nvalid/batch_size_gen)
     steps_per_epoch = ntrain_batches
@@ -198,8 +202,8 @@ def learn_mask(config,res_dir):
     training_set = PhasesOnlineDataset(partition['train'],labels, config)
     training_generator = DataLoader(training_set, **params_train)
     
-    validation_set = PhasesOnlineDataset(partition['valid'], labels, config)
-    validation_generator = DataLoader(validation_set, **params_valid)
+    #validation_set = PhasesOnlineDataset(partition['valid'], labels, config)
+    #validation_generator = DataLoader(validation_set, **params_valid)
     
     # build model and convert all the weight tensors to cuda()
     print('=' * 20)
@@ -219,20 +223,24 @@ def learn_mask(config,res_dir):
     optimizer = Adam(list(cnn.parameters()) + [mask_param], lr=initial_learning_rate)
     # learning rate scheduler for now
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=learning_rate_scheduler_factor,\
-    patience=learning_rate_scheduler_patience, verbose=True, min_lr=learning_rate_scheduler_patience_min_lr)
+                                  patience=learning_rate_scheduler_patience, verbose=True, 
+                                  min_lr=learning_rate_scheduler_patience_min_lr)
     
     # loss function
     #criterion = KDE_loss3D(100.0)
-    criterion = nn.BCEWithLogitsLoss().to(device)
+    if num_classes > 1:
+        criterion = nn.CrossEntropyLoss().to(device)
+    else:
+        criterion = nn.BCEWithLogitsLoss().to(device)
     # Model layers and number of parameters
     print("number of parameters: ", sum(param.numel() for param in cnn.parameters()))
     # start from scratch
     start_epoch, end_epoch, num_epochs = 0, max_epochs, max_epochs
     # initialize the learning results dictionary
-    learning_results = {'train_loss': [], 'train_jacc': [], 'valid_loss': [], 'valid_jacc': [],
-                            'max_valid': [], 'sum_valid': [], 'steps_per_epoch': steps_per_epoch}
+    #learning_results = {'train_loss': [], 'train_jacc': [], 'valid_loss': [], 'valid_jacc': [],
+    #                        'max_valid': [], 'sum_valid': [], 'steps_per_epoch': steps_per_epoch}
     # initialize validation set loss to be infinity and jaccard to be 0
-    valid_loss_prev, valid_JI_prev = float('Inf'), 0.0
+    #valid_loss_prev, valid_JI_prev = float('Inf'), 0.0
     
     
     # starting time of training
@@ -253,17 +261,20 @@ def learn_mask(config,res_dir):
         train_loss = 0.0
         train_jacc = 0.0
         with torch.set_grad_enabled(True):
-            for batch_ind, (xyz_np, Nphotons, targets) in enumerate(training_generator):
+            for batch_ind, (xyz, targets) in enumerate(training_generator):
                 #return xyz_np
                 # transfer data to variable on GPU
                 targets = targets.to(device)
-                Nphotons = Nphotons.to(device)
-                xyz_np = xyz_np.to(device)
+                #Nphotons = Nphotons.to(device)
+                xyz = xyz.to(device)
                 
                 # squeeze batch dimension
-                targets = targets.squeeze(dim=0)
-                Nphotons = Nphotons.squeeze()
-                xyz_np = xyz_np.squeeze()
+                targets = targets.squeeze(0)
+                if num_classes > 1:
+                    targets = targets.squeeze(1)
+                    targets = targets.long()
+                #Nphotons = Nphotons.squeeze()
+                xyz = xyz.squeeze(0)
                 
                 # print(batch_ind)
                 # print(xyz_np.shape)
@@ -271,18 +282,19 @@ def learn_mask(config,res_dir):
                 # forward + backward + optimize
                 #img = torch.zeros((batch_size_gen,1,500,500)).type(torch.FloatTensor).to(device)
                 optimizer.zero_grad()
-                outputs = cnn(mask_param,xyz_np,Nphotons)
+                outputs = cnn(mask_param,xyz)
                 #return targets
-                loss = criterion(outputs,targets)
+                loss = criterion(outputs, targets)
                 
                 loss.backward(retain_graph=True)
-                optimizer.step()
+                optimizer.step() # modified to use the learning rate scheduler
+                
                 #return loss
                 
                 # running statistics
                 train_loss += loss.item()
-                jacc_ind = jaccard_coeff(outputs,targets)
-                train_jacc += jacc_ind.item()
+                #jacc_ind = jaccard_coeff(outputs,targets)
+                #train_jacc += jacc_ind.item()
                 
                 # print training loss
                 print('Epoch [%d/%d], Iter [%d/%d], Loss: %.4f\n' % (epoch+1,
@@ -290,7 +302,7 @@ def learn_mask(config,res_dir):
                 
                 #if batch_ind % 1000 == 0:
                 #    savePhaseMask(mask_param,batch_ind,epoch,res_dir)
-                
+        scheduler.step(train_loss)        
         train_losses.append(train_loss)
         np.savetxt(os.path.join(res_dir,'train_losses.txt'),train_losses,delimiter=',')
         if epoch % 10 == 0:
@@ -305,6 +317,15 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     config = load_config("config.yaml")
+    z_range_cost_function = config['z_range_cost_function']
+    z_coupled_ratio = config.get('z_coupled_ratio',0)
+    z_coupled_spacing_range = config.get('z_coupled_spacing_range',(0,0))
+    num_classes = config['num_classes']
+   
+    assert (z_range_cost_function[1]-z_range_cost_function[0]+1) == 1, "we haven't set up multi img output prediction yet" 
+    if num_classes > 1:
+        assert z_coupled_ratio > 0 and z_coupled_spacing_range[0] > 0, "z_coupled_ratio and z_coupled_spacing_range should be set for multi class imgs"
+    
     config['device'] = device
     
     # Set the random seed

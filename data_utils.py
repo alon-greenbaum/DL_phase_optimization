@@ -101,7 +101,7 @@ def complex_to_tensor(phases_np):
 
 
 # Define a batch data generator for training and testing
-def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, particle_spatial_range_z, z_coupled_ratio=0.0, z_coupled_spacing_range=None):
+def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, particle_spatial_range_z, z_coupled_ratio, z_coupled_spacing_range):
     """
     Generate a batch of bead locations, with an option to include a mixture of random beads and z-coupled bead pairs.
     Args:
@@ -121,8 +121,8 @@ def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, p
     #    random.seed(seed)
 
     num_particles = np.random.randint(num_particles_range[0], num_particles_range[1], 1).item()
-    Nsig_range = [10000, 10001]  # in [counts]
-    Nphotons = np.random.randint(Nsig_range[0], Nsig_range[1], (batch_size, num_particles)).astype('float32')
+    #Nsig_range = [10000, 10001]  # in [counts]
+    #Nphotons = np.random.randint(Nsig_range[0], Nsig_range[1], (batch_size, num_particles)).astype('float32')
 
     xyz_grid = np.zeros((batch_size, num_particles, 3)).astype('int')
     between_beads_grid = [] # this is a list of variable length
@@ -167,7 +167,7 @@ def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, p
     if n_z_coupled > 0:
         return xyz_grid, between_beads_grid
     else:
-        return xyz_grid, Nphotons
+        return xyz_grid, None
 
 
 # ==================================
@@ -175,7 +175,6 @@ def generate_batch(batch_size, num_particles_range, particle_spatial_range_xy, p
 # =====================================
 # converts continuous xyz locations to a boolean grid
 def batch_xyz_to_boolean_grid(xyz_np, config):
-
 
     image_volume = config["image_volume"]
     ratio_input_output_image_size = config["ratio_input_output_image_size"]
@@ -186,19 +185,55 @@ def batch_xyz_to_boolean_grid(xyz_np, config):
     # set dimension
     H = image_volume[0]
     W = image_volume[1]
-    D = 1
+    D = z_range_cost_function[1] - z_range_cost_function[0] + 1
 
-    boolean_grid = np.zeros((batch_size, 1, H // int(ratio_input_output_image_size), \
+    boolean_grid = np.zeros((batch_size, D, H // int(ratio_input_output_image_size), \
                              W // int(ratio_input_output_image_size)))
     for i in range(batch_size):
         for j in range(num_particles):
             z = xyz_np[i, j, 2]
-            if -z_range_cost_function <= z <= z_range_cost_function:
+            if -z_range_cost_function[0] <= z <= z_range_cost_function[1]:
                 x = xyz_np[i, j, 0]
                 y = xyz_np[i, j, 1]
                 boolean_grid[i, 0, int(x // ratio_input_output_image_size), int(y // ratio_input_output_image_size)] = 1
     boolean_grid = torch.from_numpy(boolean_grid).type(torch.FloatTensor)
     return boolean_grid
+
+def batch_xyz_to_3_class_grid(xyz, xyz_between_beads, config):
+    """
+    Converts batch xyz bead locations to a 3-class 3D volume for each batch.
+    Class 0: background
+    Class 1: bead
+    Class 2: between-bead (direct z-line between z-coupled pairs)
+    Args:
+        xyz: (batch_size, num_particles, 3) array of bead positions.
+        xyz_between_beads: (batch_size, num_between_beads, 3) array of between-bead positions.
+        config: dict with keys 'image_volume' (list/tuple of [H, W, D])
+    Returns:
+        volumes: (batch_size, D, H, W) numpy array, values 0, 1, 2
+    """
+    z_range_cost_function = config["z_range_cost_function"]
+    image_volume = config["image_volume"]  # [H, W, D]
+    H, W, _ = image_volume
+    batch_size, num_particles, _ = xyz.shape
+    D = z_range_cost_function[1] - z_range_cost_function[0] + 1
+    volume = np.zeros((batch_size, D, H, W))
+    for k in range(batch_size):
+        # Mark beads
+        for j in range(num_particles):
+            x = int(xyz[k, j, 0])
+            y = int(xyz[k, j, 1])
+            z = int(xyz[k, j, 2])
+            if 0 <= x < H and 0 <= y < W and z_range_cost_function[0] <= z < z_range_cost_function[1]:
+                volume[k, z, x, y] = 1
+        # Mark between-bead class
+        for m in range(len(xyz_between_beads[k])):
+            x = int(xyz_between_beads[k][m, 0])
+            y = int(xyz_between_beads[k][m, 1])
+            z = int(xyz_between_beads[k][m, 2])
+            if 0 <= x < H and 0 <= y < W and z_range_cost_function[0] <= z < z_range_cost_function[1]:
+                volume[k, z, x, y] = 2
+    return volume
 
 def other_planes_gt(xyz_np, config, plane):
 
@@ -269,34 +304,23 @@ def batch_xyz_to_3class_volume(xyz_np, xyz_between_beads, config):
     image_volume = config["image_volume"]  # [H, W, D]
     H, W, D = image_volume
     batch_size, num_particles, _ = xyz_np.shape
-    volumes = np.zeros((batch_size, D, H, W))
+    volume = np.zeros((batch_size, D, H, W))
     for k in range(batch_size):
-        """
-        z_coupled_pairs = []
-        if z_coupled_ratio > 0 and between_bead_class:
-            n_z_coupled = int(num_particles * z_coupled_ratio // 2) * 2
-            # z-coupled pairs are always first in the list (see generate_batch)
-            for i in range(0, n_z_coupled, 2):
-                x1, y1, z1 = xyz_np[k, i]
-                x2, y2, z2 = xyz_np[k, i+1]
-                if x1 == x2 and y1 == y2:
-                    z_coupled_pairs.append(((int(x1), int(y1), int(z1)), (int(x2), int(y2), int(z2))))
-        """
         # Mark beads
         for j in range(num_particles):
             x = int(xyz_np[k, j, 0])
             y = int(xyz_np[k, j, 1])
             z = int(xyz_np[k, j, 2])
             if 0 <= x < H and 0 <= y < W and -D//2 <= z < D//2:
-                volumes[k, z, x, y] = 1
+                volume[k, z, x, y] = 1
         # Mark between-bead class
         for m in range(len(xyz_between_beads[k])):
             x = int(xyz_between_beads[k][m, 0])
             y = int(xyz_between_beads[k][m, 1])
             z = int(xyz_between_beads[k][m, 2])
             if 0 <= x < H and 0 <= y < W and -D//2 <= z < D//2:
-                volumes[k, z, x, y] = 0.5
-    return volumes
+                volume[k, z, x, y] = 2
+    return volume
 
 
 def save_3d_volume_as_tiffs(volume, out_dir, base_name):
@@ -317,7 +341,7 @@ def save_3d_volume_as_tiffs(volume, out_dir, base_name):
         for z in range(D):
             fname = os.path.join(subfolder, f"{base_name}_z{z:02d}.tiff")
             # Save as 8-bit, 255 for bead, 0 for background
-            img8 = (volume[k][z]*255).astype(np.uint8)
+            img8 = (volume[k][z]/max(volume[k][z])*255).astype(np.uint8)
             skimage.io.imsave(fname, img8)
         break # to only make one batch image for now
 
@@ -344,13 +368,17 @@ class PhasesOnlineDataset(Dataset):
 
         # associated number of photons
         dict = self.labels[ID]
-        Nphotons_np = dict['N']
-        Nphotons = torch.from_numpy(Nphotons_np)
+        #Nphotons_np = dict['N']
+        #Nphotons = torch.from_numpy(Nphotons_np)
 
         # corresponding xyz labels turned to a boolean tensor
         xyz_np = dict['xyz']
-        bool_grid = batch_xyz_to_boolean_grid(xyz_np, self.config)
-        return xyz_np, Nphotons, bool_grid
+        xyz_between_beads = dict['xyz_between_beads']
+        if self.config['num_classes'] > 1:
+            target = batch_xyz_to_3_class_grid(xyz_np, xyz_between_beads, self.config)
+        else:
+            target = batch_xyz_to_boolean_grid(xyz_np, self.config)
+        return xyz_np, target
 
 
 def savePhaseMask(mask_param, ind, epoch, res_dir):

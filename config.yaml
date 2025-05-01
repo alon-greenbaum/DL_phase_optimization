@@ -1,5 +1,5 @@
-ntrain: 1000  # default 10000 how many images per epoch
-nvalid: 100  # default 1000
+ntrain: 1000  # default 10000 how many bead volumes per epoch
+nvalid: 10  # default 1000
 batch_size_gen: 2  # default 2
 # Number of emitters per image
 num_particles_range: [800, 801]  # with a strong gpu [450, 550]
@@ -39,9 +39,9 @@ ratio_input_output_image_size: 1  # default with Unet 1, with ResNet 4
 # How many planes to consider as right classification, besides the plane
 # in focus, if 1 the -1, in focus, and +1 plane will be considered correct
 # if 0, only the infocus plane is considered, default value 1
-z_range_cost_function: 0 # default 1
+z_range_cost_function: [0,0] # default 1
 use_unet: true
-num_classes: 1
+num_classes: 3
 lens_approach: "convolution" # "fourier" or "fresnel"
 power_2: 1000 # pad to this power for fourier transform
 bfp_dir: "back_focal_plane"
@@ -50,3 +50,5 @@ conv3d: False
 aperature: True
 z_img_mode: 'edgecenter'
 z_spacing: 2
+z_coupled_ratio: 0.5
+z_coupled_spacing_range: [2,5]

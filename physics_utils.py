@@ -324,7 +324,7 @@ class PhysicalLayer(nn.Module):
         self.noise = NoiseLayer(device, self.Nimgs, self.conv3d)
         self.norm01 = Normalize01()
 
-    def forward(self, mask_param, xyz, Nphotons):
+    def forward(self, mask_param, xyz):
 
         Nbatch, Nemitters = xyz.shape[0], xyz.shape[1]
         
