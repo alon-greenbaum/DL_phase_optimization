@@ -149,6 +149,7 @@ def learn_mask(config,res_dir):
         z_depth_list = list(range(-z_spacing,z_spacing+1))
     Nimgs = len(z_depth_list)
     config['Nimgs'] = Nimgs
+    weights = config.get('weights', [1,1,1])
     
     num_classes = config['num_classes']
     
@@ -229,8 +230,12 @@ def learn_mask(config,res_dir):
     # loss function
     #criterion = KDE_loss3D(100.0)
     if num_classes > 1:
-        criterion = nn.CrossEntropyLoss().to(device)
+        weights = torch.tensor(weights).to(device)
+        criterion = nn.CrossEntropyLoss(weight=weights).to(device)
+        # 0 = background, 1 = bead
+        # 2 = between beads
     else:
+        
         criterion = nn.BCEWithLogitsLoss().to(device)
     # Model layers and number of parameters
     print("number of parameters: ", sum(param.numel() for param in cnn.parameters()))
@@ -244,10 +249,10 @@ def learn_mask(config,res_dir):
     
     
     # starting time of training
-    train_start = time.time()
+    #train_start = time.time()
     
     # loop over epochs
-    not_improve = 0
+    #not_improve = 0
     train_losses = []
     for epoch in np.arange(start_epoch,end_epoch):
         epoch_start_time = time.time()
@@ -259,7 +264,7 @@ def learn_mask(config,res_dir):
         # training phase
         cnn.train()
         train_loss = 0.0
-        train_jacc = 0.0
+        #train_jacc = 0.0
         with torch.set_grad_enabled(True):
             for batch_ind, (xyz, targets) in enumerate(training_generator):
                 #return xyz_np

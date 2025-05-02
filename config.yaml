@@ -52,3 +52,10 @@ z_img_mode: 'edgecenter'
 z_spacing: 2
 z_coupled_ratio: 0.5
 z_coupled_spacing_range: [2,5]
+weights: [1,1,2] # cross entropy loss weights 
+# 0 = background, 1 = bead
+# 2 = between beads
+# currently about 2x as many beads as between beads
+# increase z couple spacing or ratio to increase the number of between beads
+# try focal loss
+# changing input z slices

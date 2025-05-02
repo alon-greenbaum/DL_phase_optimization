@@ -24,14 +24,17 @@ def makedirs(path):
     if not os.path.exists(path):
         os.makedirs(path)
         
-def img_save_tiff(img, out_dir, name, key=None):
+def img_save_tiff(img, out_dir, name, key=None, as_rgb=False, as_rgb_channels=False):
     """
     Save a 3D image array as separate 2D tiffs or a 2D array as a 2D tiff.
+    Optionally, save as RGB if img contains class values 0, 1, 2, or as RGB if img is 3 channels with values in [0,1].
     Args:
         img (numpy.ndarray): The image array to save.
         out_dir (str): The directory to save the image(s) to.
         name (str): The base name for the saved image file(s).
         key (str, optional): An optional identifier to include in the filename. Defaults to None.
+        as_rgb (bool, optional): If True, save class-labeled image as RGB. Defaults to False.
+        as_rgb_channels (bool, optional): If True, save 3-channel image (values 0-1) as RGB. Defaults to False.
     """
     if key is None:
         base_filename = f"{name}.tiff"
@@ -40,16 +43,77 @@ def img_save_tiff(img, out_dir, name, key=None):
         base_filename = f"{name}_{key}.tiff"
         base_path = os.path.join(out_dir, base_filename)
 
+    def to_rgb(arr):
+        # Map 0: black, 1: red, 2: green
+        rgb = np.zeros(arr.shape + (3,), dtype=np.uint8)
+        rgb[arr == 1] = [255, 0, 0]
+        rgb[arr == 2] = [0, 255, 0]
+        return rgb
+
+    def scale_rgb_channels(arr):
+        # Accepts HxWx3 or 3xHxW, values in [0,1], returns uint8 HxWx3
+        if arr.ndim == 3:
+            if arr.shape[0] == 3 and arr.shape[2] != 3:
+                arr = np.transpose(arr, (1, 2, 0))  # 3xHxW -> HxWx3
+            elif arr.shape[2] != 3:
+                raise ValueError("Input must have 3 channels in last or first dimension.")
+            arr = np.clip(arr, 0, 1)
+            arr = (arr * 255).astype(np.uint8)
+            return arr
+        else:
+            raise ValueError("Input must be a 3-channel 2D image.")
+
+    def scale_custom_rgb_channels(arr):
+        # Accepts HxWx3 or 3xHxW, values in [0,1], returns uint8 HxWx3
+        if arr.ndim == 3:
+            if arr.shape[0] == 3 and arr.shape[2] != 3:
+                arr = np.transpose(arr, (1, 2, 0))  # 3xHxW -> HxWx3
+            elif arr.shape[2] != 3:
+                raise ValueError("Input must have 3 channels in last or first dimension.")
+            arr = np.clip(arr, 0, 1)
+            h, w, _ = arr.shape
+            rgb = np.zeros((h, w, 3), dtype=np.float32)
+            # Channel 0: blue
+            rgb[..., 2] += arr[..., 0]  # B
+            # Channel 1: red
+            rgb[..., 0] += arr[..., 1]  # R
+            # Channel 2: green
+            rgb[..., 1] += arr[..., 2]  # G
+            rgb = np.clip(rgb, 0, 1)
+            rgb = (rgb * 255).astype(np.uint8)
+            return rgb
+        else:
+            raise ValueError("Input must be a 3-channel 2D image.")
+
+    if as_rgb_channels:
+        rgb_img = scale_custom_rgb_channels(img)
+        skimage.io.imsave(base_path, rgb_img)
+        print(f"Saved {name} as custom RGB channels to {base_path}")
+        return
+
     if img.ndim == 3:
         for i in range(img.shape[0]):
             if key is None:
                 path = os.path.join(out_dir, f"{name}_z_{i-(img.shape[0]//2)}.tiff")
             else:
                 path = os.path.join(out_dir, f"{name}_{key}_z_{i-(img.shape[0]//2)}.tiff")
-            skimage.io.imsave(path, img[i])
+            if as_rgb:
+                rgb_img = to_rgb(img[i])
+                skimage.io.imsave(path, rgb_img)
+            else:
+                max_val = np.max(img[i])
+                if max_val > 0:
+                    norm_img = (img[i] / max_val * 255).astype(np.uint8)
+                else:
+                    norm_img = img[i].astype(np.uint8)
+                skimage.io.imsave(path, norm_img)
             print(f"Saved {name} at depth {i} for key {key} to {path}")
     elif img.ndim == 2:
-        skimage.io.imsave(base_path, img)
+        if as_rgb:
+            rgb_img = to_rgb(img)
+            skimage.io.imsave(base_path, rgb_img)
+        else:
+            skimage.io.imsave(base_path, img)
         print(f"Saved {name} to {base_path}")
     else:
         print(f"Unexpected dimensions for phys_img: {img.shape}")
