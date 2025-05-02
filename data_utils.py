@@ -224,14 +224,14 @@ def batch_xyz_to_3_class_grid(xyz, xyz_between_beads, config):
             x = int(xyz[k, j, 0])
             y = int(xyz[k, j, 1])
             z = int(xyz[k, j, 2])
-            if 0 <= x < H and 0 <= y < W and z_range_cost_function[0] <= z < z_range_cost_function[1]:
+            if 0 <= x < H and 0 <= y < W and z_range_cost_function[0] <= z <= z_range_cost_function[1]:
                 volume[k, z, x, y] = 1
         # Mark between-bead class
         for m in range(len(xyz_between_beads[k])):
             x = int(xyz_between_beads[k][m, 0])
             y = int(xyz_between_beads[k][m, 1])
             z = int(xyz_between_beads[k][m, 2])
-            if 0 <= x < H and 0 <= y < W and z_range_cost_function[0] <= z < z_range_cost_function[1]:
+            if 0 <= x < H and 0 <= y < W and z_range_cost_function[0] <= z <= z_range_cost_function[1]:
                 volume[k, z, x, y] = 2
     return volume
 

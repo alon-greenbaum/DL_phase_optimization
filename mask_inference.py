@@ -5,14 +5,14 @@ import numpy as np
 import skimage.io
 import torch
 from datetime import datetime
-from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid, img_save_tiff, find_image_with_wildcard, other_planes_gt
+from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid, img_save_tiff, find_image_with_wildcard, batch_xyz_to_3_class_grid
 from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
 from physics_utils import PhysicalLayer  # physical model import
 from beam_profile_gen import beam_profile_focus, beam_section, phase_mask_gen
 from metrics import compute_and_log_metrics, save_heatmap
 
-def run_inference(model, mask_param, xyz, Nphotons, device, model_type = None):
+def run_inference(model, mask_param, xyz, model_type = None):
     """
     Runs inference using the given model.
 
@@ -27,7 +27,7 @@ def run_inference(model, mask_param, xyz, Nphotons, device, model_type = None):
         torch.Tensor: The output of the model.
     """
     with torch.no_grad():
-        out = model(mask_param, xyz, Nphotons)
+        out = model(mask_param, xyz)
     if model_type == "cnn":
         out = torch.sigmoid(out)
     return out.detach().cpu().squeeze().numpy()
@@ -166,30 +166,39 @@ def main():
         data = labels_dict[batch]
         xyz_np = data['xyz']
         xyz = torch.tensor(xyz_np, dtype=torch.float32).to(config['device'])
-        Nphotons = torch.tensor(data['N'], dtype=torch.float32).to(config['device'])
+        xyz_between_beads = data['xyz_between_beads']
 
         # Physical layer inference
-        phys_img = run_inference(phys_model, mask_param, xyz, Nphotons, config['device'])
+        phys_img = run_inference(phys_model, mask_param, xyz)
         img_save_tiff(phys_img[display_batch], out_dir, "learned_mask_camera", batch)
 
         # CNN layer inference
-        cnn_img = run_inference(cnn_model, mask_param, xyz, Nphotons, config['device'],'cnn')
+        cnn_img = run_inference(cnn_model, mask_param, xyz,'cnn')
         img_save_tiff(cnn_img[0], out_dir, "inference_cnn", batch)
 
         # Save ground truth
-        gt_img = batch_xyz_to_boolean_grid(xyz_np, config)
-        if torch.is_tensor(gt_img):
-            gt_img = gt_img.detach().squeeze().cpu().numpy()
-        if gt_img.dtype == np.bool_:
-            gt_img = (gt_img.astype(np.uint8)) * 255
-        img_save_tiff(gt_img[0], out_dir, "ground_truth", batch)
+        num_classes = config['num_classes']
+        if num_classes == 1:
+            gt_img = batch_xyz_to_boolean_grid(xyz_np, config)
+            if torch.is_tensor(gt_img):
+                gt_img = gt_img.detach().squeeze().cpu().numpy()
+            if gt_img.dtype == np.bool_:
+                gt_img = (gt_img) * 255
+            img_save_tiff(gt_img[0].astype(np.uint8), out_dir, "ground_truth", batch)
+        if num_classes == 3: 
+            gt_img = batch_xyz_to_3_class_grid(xyz, xyz_between_beads, config)  
+            gt_img = (gt_img) * 255//(num_classes-1)  
+            #how to squeeze the 2nd dim
+            gt_img = gt_img.squeeze(1)
+            img_save_tiff(gt_img[0].astype(np.uint8), out_dir, "ground_truth", batch)
+            
         # add multiple ground truths for each z plane
         # for i in range()
         #gt_imgother_planes_gt
 
         # Compute and log performance metrics
-        compute_and_log_metrics(gt_img[0], cnn_img[0], out_dir,"learned_mask")
-        save_heatmap(cnn_img[0], out_dir, "heatmap_cnn")
+        #compute_and_log_metrics(gt_img[0], cnn_img[0], out_dir,"learned_mask")
+        #save_heatmap(cnn_img[0], out_dir, "heatmap_cnn")
         # save performance metrics to txt file
         
 
@@ -197,16 +206,16 @@ def main():
         if args.empty_mask:
             empty_mask_tensor = torch.zeros_like(mask_tensor)
             empty_mask_param = torch.nn.Parameter(empty_mask_tensor, requires_grad=False)
-            empty_phys_img = run_inference(phys_model, empty_mask_param, xyz, Nphotons, config['device'])
-            empty_cnn_img = run_inference(cnn_model, empty_mask_param, xyz, Nphotons, config['device'],"cnn")
+            empty_phys_img = run_inference(phys_model, empty_mask_param, xyz)
+            empty_cnn_img = run_inference(cnn_model, empty_mask_param, xyz,"cnn")
             img_save_tiff(empty_phys_img[display_batch], out_dir, "empty_mask_camera", batch)
             img_save_tiff(empty_cnn_img[0], out_dir, "inference_empty_cnn", batch)
 
         # Paper mask inference
         if args.paper_mask:
             paper_mask_param = paper_mask_param.to(config['device'])
-            paper_phys_img = run_inference(phys_model, paper_mask_param, xyz, Nphotons, config['device'])
-            paper_cnn_img = run_inference(cnn_model, paper_mask_param, xyz, Nphotons, config['device'],"cnn")
+            paper_phys_img = run_inference(phys_model, paper_mask_param, xyz)
+            paper_cnn_img = run_inference(cnn_model, paper_mask_param, xyz,"cnn")
             img_save_tiff(paper_phys_img[display_batch], out_dir, "paper_mask_camera", batch)
             img_save_tiff(paper_cnn_img[0], out_dir, "inference_paper_cnn", batch)
             
