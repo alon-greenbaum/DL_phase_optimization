@@ -5,12 +5,13 @@ import numpy as np
 import skimage.io
 import torch
 from datetime import datetime
-from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid, img_save_tiff, find_image_with_wildcard, batch_xyz_to_3_class_grid
+from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid, img_save_tiff, find_image_with_wildcard, batch_xyz_to_3_class_grid, save_3d_volume_as_tiffs, batch_xyz_to_3class_volume
 from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
 from physics_utils import PhysicalLayer  # physical model import
 from beam_profile_gen import beam_profile_focus, beam_section, phase_mask_gen
 from metrics import compute_and_log_metrics, save_heatmap
+import matplotlib.pyplot as plt
 
 def run_inference(model, mask_param, xyz, model_type = None):
     """
@@ -50,7 +51,6 @@ def main():
     parser.add_argument("--empty_mask", action="store_true", help="Run inference with an empty mask")
     parser.add_argument("--paper_mask", type=str, default="", help="File path to paper phase mask for inference")
     parser.add_argument("--no_noise", action="store_true", help="Disable noise in PhysicalLayer inference")
-    # Optional CNN model path, will be auto-determined if empty
     parser.add_argument("--model_path", type=str, default="", help="Optional: Path to the CNN pretrained model checkpoint")
     parser.add_argument("--beam_3d_sections", type=str, default="beam_3d_sections", help="Optional: Path to the beam 3d sections file")
     parser.add_argument("--generate_beam_profile", action="store_true", help="Generate beam profile for the input mask (default: off)")
@@ -59,8 +59,12 @@ def main():
     parser.add_argument("--y_min", type=int, default=-50, help="Minimum y value for beam section generation")
     parser.add_argument("--y_max", type=int, default=50, help="Maximum y value for beam section generation")
     parser.add_argument("--max_intensity", type=float, help="Maximum intensity for the mask")
+    parser.add_argument("--bead_volume", action="store_true", help="Save bead volume as tiff files")
+    parser.add_argument("--plot_train_loss", action="store_true", help="Plot the training loss over time from train_losses.txt in input_dir")
     args = parser.parse_args()
 
+    
+    
     # Automatically determine CNN model path if not provided
     if not args.model_path:
         # x is an integer that begins at 0 and increases by 1.
@@ -139,6 +143,23 @@ def main():
     dt_str = datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir = os.path.join(args.res_dir, dt_str)
     makedirs(out_dir)
+    
+    if args.plot_train_loss:
+        loss_file = os.path.join(args.input_dir, "train_losses.txt")
+        if not os.path.exists(loss_file):
+            print(f"train_losses.txt not found in {args.input_dir}")
+        else:
+            with open(loss_file, "r") as f:
+                losses = [float(line.strip()) for line in f if line.strip()]
+            plt.figure()
+            plt.plot(losses, label="Training Loss")
+            plt.xlabel("Epoch or Iteration")
+            plt.ylabel("Loss")
+            plt.title("Training Loss Over Time")
+            plt.legend()
+            save_path = os.path.join(out_dir, "train_loss.png")
+            plt.savefig(save_path)
+            print(f"Training loss plot saved to {save_path}")
 
     # Save updated configuration in out_dir
     config_output_path = os.path.join(out_dir, "config.yaml")
@@ -146,12 +167,12 @@ def main():
         for batch, value in config.items():
             f.write(f"{batch}: {value}\n")
     
+    input_mask_path = os.path.join(out_dir, "input_mask.tiff")
+    skimage.io.imsave(input_mask_path, mask_np)
+    print(f"Saved input mask to {input_mask_path}")
+        
     # Generate and save beam profile for the input mask
     if args.generate_beam_profile:
-        input_mask_path = os.path.join(out_dir, "input_mask.tiff")
-        skimage.io.imsave(input_mask_path, mask_np)
-        print(f"Saved input mask to {input_mask_path}")
-    
         beam_3d_sections_filepath = os.path.join(out_dir, args.beam_3d_sections)
         if not os.path.exists(beam_3d_sections_filepath):
             os.makedirs(beam_3d_sections_filepath)
@@ -189,13 +210,15 @@ def main():
             gt_img = batch_xyz_to_boolean_grid(xyz_np, config)
             if torch.is_tensor(gt_img):
                 gt_img = gt_img.detach().squeeze().cpu().numpy()
-            #if gt_img.dtype == np.bool_:
-                #gt_img = (gt_img) * 255
             img_save_tiff(gt_img[0].astype(np.uint8), out_dir, "ground_truth", batch)
+            # Compute metrics for binary
+            compute_and_log_metrics(gt_img[0], cnn_img[0], out_dir, f"batch_{batch}", num_classes=2)
         if num_classes == 3: 
             gt_img = batch_xyz_to_3_class_grid(xyz, xyz_between_beads, config)  
             gt_img = gt_img.squeeze(1)
             img_save_tiff(gt_img[0].astype(np.uint8), out_dir, "ground_truth", batch, True)
+            # Compute metrics for 3-class
+            compute_and_log_metrics(gt_img[0], cnn_img[0], out_dir, f"batch_{batch}", num_classes=3)
 
         # Empty mask inference
         if args.empty_mask:
@@ -211,6 +234,12 @@ def main():
                 img_save_tiff(empty_cnn_img[0], out_dir, "inference_empty_cnn", batch, True)
             img_save_tiff(empty_phys_img[display_batch], out_dir, "empty_mask_camera", batch)
 
+        if args.bead_volume:
+            bead_vol = batch_xyz_to_3class_volume(xyz_np, xyz_between_beads, config)
+            # Save all three classes in one image: 0=background, 127=between beads, 255=beads
+            bead_vol_dir = os.path.join(out_dir, "bead_volume")
+            os.makedirs(bead_vol_dir, exist_ok=True)
+            save_3d_volume_as_tiffs(bead_vol, bead_vol_dir)
 
         # Paper mask inference
         if args.paper_mask:

@@ -233,16 +233,17 @@ class PhysicalLayer(nn.Module):
         self.datetime = datetime.now().strftime("%Y%m%d-%H%M%S")
         self.conv3d = config.get('conv3d', False)
         self.aperature = config.get('aperature', False)
-        self.z_spacing = config.get('z_spacing', 0)
-        self.z_img_mode = config.get('z_img_mode', 'edgecenter')
+        #self.z_spacing = config.get('z_spacing', 0)
+        #self.z_img_mode = config.get('z_img_mode', 'edgecenter')
         #if self.z_img_mode == 'everyother':
             #self.z_depth_list = list(range(0,self.Nimgs,2))
-        if self.z_img_mode == 'edgecenter' and self.z_spacing > 0:
-            self.z_depth_list = [-self.z_spacing, 0, self.z_spacing]
-        else:
-            self.z_depth_list = list(range(-self.z_spacing,self.z_spacing+1))
+        #if self.z_img_mode == 'edgecenter' and self.z_spacing > 0:
+        #    self.z_depth_list = [-self.z_spacing, 0, self.z_spacing]
+        #else:
+        #    self.z_depth_list = list(range(-self.z_spacing,self.z_spacing+1))
         
-        self.Nimgs = len(self.z_depth_list)
+        self.Nimgs = config['Nimgs']
+        self.z_depth_list = config['z_depth_list']
 
         # to transer the physical size of the imaging volume
         self.image_volume_um = image_volume

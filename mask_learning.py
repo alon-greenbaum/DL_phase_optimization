@@ -141,18 +141,17 @@ def learn_mask(config,res_dir):
     learning_rate_scheduler_patience_min_lr = config['learning_rate_scheduler_patience_min_lr']
     device = config['device']
     use_unet = config['use_unet']
-    z_spacing = config.get('z_spacing', 0)
-    z_img_mode = config.get('z_img_mode', 'edgecenter')
-    if z_img_mode == 'edgecenter' and z_spacing > 0:
-        z_depth_list = [-z_spacing, 0, z_spacing]
-    else:
-        z_depth_list = list(range(-z_spacing,z_spacing+1))
+    #z_spacing = config.get('z_spacing', 0)
+    #z_img_mode = config.get('z_img_mode', 'edgecenter')
+    #if z_img_mode == 'edgecenter' and z_spacing > 0:
+    #    z_depth_list = [-z_spacing, 0, z_spacing]
+    #else:
+    #    z_depth_list = list(range(-z_spacing,z_spacing+1))
+    z_depth_list = config['z_depth_list']
     Nimgs = len(z_depth_list)
     config['Nimgs'] = Nimgs
     weights = config.get('weights', [1,1,1])
-    
     num_classes = config['num_classes']
-    
 
     
     # train on GPU if available
@@ -234,8 +233,7 @@ def learn_mask(config,res_dir):
         criterion = nn.CrossEntropyLoss(weight=weights).to(device)
         # 0 = background, 1 = bead
         # 2 = between beads
-    else:
-        
+    else: 
         criterion = nn.BCEWithLogitsLoss().to(device)
     # Model layers and number of parameters
     print("number of parameters: ", sum(param.numel() for param in cnn.parameters()))
@@ -254,7 +252,7 @@ def learn_mask(config,res_dir):
     # loop over epochs
     #not_improve = 0
     train_losses = []
-    for epoch in np.arange(start_epoch,end_epoch):
+    for epoch in np.arange(start_epoch, end_epoch):
         epoch_start_time = time.time()
         # print current epoch number
         print('='*20)
@@ -266,7 +264,7 @@ def learn_mask(config,res_dir):
         train_loss = 0.0
         #train_jacc = 0.0
         with torch.set_grad_enabled(True):
-            for batch_ind, (xyz, targets) in enumerate(training_generator):
+            for batch_index, (xyz, targets) in enumerate(training_generator):
                 #return xyz_np
                 # transfer data to variable on GPU
                 targets = targets.to(device)
@@ -303,17 +301,16 @@ def learn_mask(config,res_dir):
                 
                 # print training loss
                 print('Epoch [%d/%d], Iter [%d/%d], Loss: %.4f\n' % (epoch+1,
-                      num_epochs, batch_ind+1, steps_per_epoch, loss.item()))
+                      num_epochs, batch_index+1, steps_per_epoch, loss.item()))
                 
                 #if batch_ind % 1000 == 0:
                 #    savePhaseMask(mask_param,batch_ind,epoch,res_dir)
-        scheduler.step(train_loss)        
+        optimizer.step()        
         train_losses.append(train_loss)
         np.savetxt(os.path.join(res_dir,'train_losses.txt'),train_losses,delimiter=',')
         if epoch % 10 == 0:
             torch.save(cnn.state_dict(),os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
-        
-        savePhaseMask(mask_param,batch_ind,epoch,res_dir)
+        savePhaseMask(mask_param, batch_index, epoch, res_dir)
     return labels
 
 if __name__ == '__main__':

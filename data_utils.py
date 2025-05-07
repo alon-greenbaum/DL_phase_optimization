@@ -50,19 +50,6 @@ def img_save_tiff(img, out_dir, name, key=None, as_rgb=False, as_rgb_channels=Fa
         rgb[arr == 2] = [0, 255, 0]
         return rgb
 
-    def scale_rgb_channels(arr):
-        # Accepts HxWx3 or 3xHxW, values in [0,1], returns uint8 HxWx3
-        if arr.ndim == 3:
-            if arr.shape[0] == 3 and arr.shape[2] != 3:
-                arr = np.transpose(arr, (1, 2, 0))  # 3xHxW -> HxWx3
-            elif arr.shape[2] != 3:
-                raise ValueError("Input must have 3 channels in last or first dimension.")
-            arr = np.clip(arr, 0, 1)
-            arr = (arr * 255).astype(np.uint8)
-            return arr
-        else:
-            raise ValueError("Input must be a 3-channel 2D image.")
-
     def scale_custom_rgb_channels(arr):
         # Accepts HxWx3 or 3xHxW, values in [0,1], returns uint8 HxWx3
         if arr.ndim == 3:
@@ -374,20 +361,20 @@ def batch_xyz_to_3class_volume(xyz_np, xyz_between_beads, config):
         for j in range(num_particles):
             x = int(xyz_np[k, j, 0])
             y = int(xyz_np[k, j, 1])
-            z = int(xyz_np[k, j, 2])
-            if 0 <= x < H and 0 <= y < W and -D//2 <= z < D//2:
+            z = int(xyz_np[k, j, 2])+ D//2
+            if 0 <= x < H and 0 <= y < W and 0 <= z < D:
                 volume[k, z, x, y] = 1
         # Mark between-bead class
         for m in range(len(xyz_between_beads[k])):
             x = int(xyz_between_beads[k][m, 0])
             y = int(xyz_between_beads[k][m, 1])
-            z = int(xyz_between_beads[k][m, 2])
-            if 0 <= x < H and 0 <= y < W and -D//2 <= z < D//2:
+            z = int(xyz_between_beads[k][m, 2]) + D//2
+            if 0 <= x < H and 0 <= y < W and 0 <= z < D:
                 volume[k, z, x, y] = 2
     return volume
 
 
-def save_3d_volume_as_tiffs(volume, out_dir, base_name):
+def save_3d_volume_as_tiffs(volume, out_dir):
     """
     Save a 3D numpy array (D, H, W) as a series of 2D tiff images, one per z-slice, in a unique subfolder.
     Args:
@@ -397,16 +384,18 @@ def save_3d_volume_as_tiffs(volume, out_dir, base_name):
     """
     import os
     import skimage.io
-    subfolder = os.path.join(out_dir, base_name)
-    os.makedirs(subfolder, exist_ok=True)
+    #subfolder = os.path.join(out_dir, base_name)
+    #os.makedirs(subfolder, exist_ok=True)
     D = volume.shape[1]
     for k in range(# shape of volume in 1st dimension
         volume.shape[0]):
         for z in range(D):
-            fname = os.path.join(subfolder, f"{base_name}_z{z:02d}.tiff")
+            base_name = f"{z:02d}"
             # Save as 8-bit, 255 for bead, 0 for background
-            img8 = (volume[k][z]/max(volume[k][z])*255).astype(np.uint8)
-            skimage.io.imsave(fname, img8)
+            #img8 = (volume[k][z]/max(volume[k][z])*255).astype(np.uint8)
+            #skimage.io.imsave(fname, img8)
+            img_save_tiff(volume[k][z], out_dir, base_name, key=None, as_rgb=True)
+            
         break # to only make one batch image for now
 
 
