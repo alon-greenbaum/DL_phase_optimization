@@ -19,6 +19,7 @@ from cnn_utils_unet import OpticsDesignUnet
 from loss_utils import KDE_loss3D, jaccard_coeff
 #from beam_profile_gen import phase_gen
 import scipy.io as sio
+from torchmetrics.functional.classification import multiclass_focal_loss
 #import hdf5storage  # new import for saving MATLAB 7.3 files
 
 # systemctl restart --user xdg-desktop-portal-gnome
@@ -152,6 +153,7 @@ def learn_mask(config,res_dir):
     config['Nimgs'] = Nimgs
     weights = config.get('weights', [1,1,1])
     num_classes = config['num_classes']
+    focal_loss = config.get('focal_loss', False)
 
     
     # train on GPU if available
@@ -230,7 +232,12 @@ def learn_mask(config,res_dir):
     #criterion = KDE_loss3D(100.0)
     if num_classes > 1:
         weights = torch.tensor(weights).to(device)
-        criterion = nn.CrossEntropyLoss(weight=weights).to(device)
+        if focal_loss:
+            criterion = lambda outputs, targets: multiclass_focal_loss(
+            outputs, targets, num_classes=num_classes, alpha=weights, reduction="mean"
+            )
+        else:
+            criterion = nn.CrossEntropyLoss(weight=weights).to(device)
         # 0 = background, 1 = bead
         # 2 = between beads
     else: 

@@ -4,6 +4,7 @@ import pickle
 import numpy as np
 import skimage.io
 import torch
+from torch import nn
 from datetime import datetime
 from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid, img_save_tiff, find_image_with_wildcard, batch_xyz_to_3_class_grid, save_3d_volume_as_tiffs, batch_xyz_to_3class_volume
 from cnn_utils import OpticsDesignCNN
@@ -138,6 +139,10 @@ def main():
     cnn_model.to(config['device'])
     cnn_model.load_state_dict(torch.load(args.model_path, map_location=config['device']))
     cnn_model.eval()
+    for layer in cnn_model.modules():
+        if isinstance(layer, nn.Conv2d):
+            print(layer.weight.shape)
+    exit()
 
     # Create output directory for inference results using current datetime.
     dt_str = datetime.now().strftime("%Y%m%d-%H%M%S")

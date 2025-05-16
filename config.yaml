@@ -1,4 +1,4 @@
-ntrain: 50  # default 10000 how many bead volumes per epoch
+ntrain: 100  # default 10000 how many bead volumes per epoch
 nvalid: 1  # default 1000
 batch_size_gen: 2  # default 2
 # Number of emitters per image
@@ -50,7 +50,7 @@ conv3d: False
 aperature: True
 #z_img_mode: 'edgecenter'
 #z_spacing: 2
-z_depth_list: [-4,-2,0,2,4] # z slices input into the cnn
+z_depth_list: [0] # z slices input into the cnn
 z_coupled_ratio: 0.5
 z_coupled_spacing_range: [2,5]
 weights: [1.0,1.0,1.5] # cross entropy loss weights (must be floats)
