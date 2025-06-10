@@ -1,8 +1,8 @@
-ntrain: 100  # default 10000 how many bead volumes per epoch
+ntrain: 2  # default 10000 how many bead volumes per epoch
 nvalid: 1  # default 1000
 batch_size_gen: 2  # default 2
 # Number of emitters per image
-num_particles_range: [800, 801]  # with a strong gpu [450, 550]
+num_particles_range: [10, 11]  # with a strong gpu [450, 550]
 image_volume: [200, 200, 30]  # the volume of imaging each dimension in um (i think these are in camera coordinates)
 particle_spatial_range_xy: [15, 185]  # dependence on the volume size default 200 um
 # um, to avoid edges of the image so 15 um away
@@ -10,7 +10,7 @@ particle_spatial_range_z: [-10, 11, 1]  # um default range(-10,11,1)
 # Define the parameters
 N: 500  # grid size
 px: 1.0e-6  # pixel size [m]
-focal_length: 2.0e-3  # [m] equivalent to 2 mm away from the lens
+focal_length: 180.0e-3  # [m] equivalent to 2 mm away from the lens
 wavelength: 0.561e-6  # [m]
 refractive_index: 1.0  # We assume propagation is in air
 psf_width_pixels: 101  # How big will be the psf image
@@ -21,13 +21,13 @@ bead_radius: 1.0  # pixels 1.0 default, can change to make larger beads
 random_seed: 12345
 initial_learning_rate: 0.01
 batch_size: 1
-max_epochs: 201
+max_epochs: 1
 mask_phase_pixels: 500
 data_path: "beads_img_defocus"
 path_save: "data_mask_learning"
 path_train: "traininglocations"
 ori_intensity: 20000  # arbitrary units
-laser_beam_FWHC: 0.0001  # in m, the size of the FWHM of the Gaussian beam (100um)
+laser_beam_FWHC: 1.8e-3  # in m, the size of the FWHM of the Gaussian beam 0.6 with 3x BE
 max_defocus: 41  # um for generating the PSFs
 learning_rate_scheduler_factor: 0.1
 learning_rate_scheduler_patience: 5
@@ -42,7 +42,7 @@ ratio_input_output_image_size: 1  # default with Unet 1, with ResNet 4
 z_range_cost_function: [0,0] # default 1
 use_unet: true
 num_classes: 1
-lens_approach: "convolution" # "fourier" or "fresnel"
+lens_approach: "4f" # "fourier" or "fresnel"
 power_2: 1000 # pad to this power for fourier transform
 bfp_dir: "back_focal_plane"
 dropout: 0.5
@@ -63,4 +63,4 @@ weights: [1.0,1.0,1.5] # cross entropy loss weights (must be floats)
 # changing input z slices
 initial_phase_mask: "bessel"
 bessel_cone_angle_degrees: 1.0
-focal_length_2:   # [m] focal length of the second lens
+focal_length_2: 75.0e-3  # [m] focal length of the second lens

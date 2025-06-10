@@ -464,6 +464,28 @@ def save_output_layer(output_layer, base_dir, lens_approach, counter, datetime, 
             for key, value in config.items():
                 file.write(f'{key}: {value}\n')
 
+def save_output_layer_complex(output_layer, base_dir, lens_approach, counter, datetime, config):
+    """
+    Save the output layer as a complex numpy array (.npy file).
+    """
+    # Convert the tensor to a NumPy complex array
+    output_array = output_layer.cpu().detach().numpy()[0, 0, :, :]  # shape: (H, W), dtype: complex
+
+    # Create the filename and directory
+    filename = f"{counter}_complex.npy"
+    dir = os.path.join(base_dir, lens_approach, datetime)
+    makedirs(dir)
+    filepath = os.path.join(dir, filename)
+
+    # Save the complex array
+    np.save(filepath, output_array)
+
+    if counter == 0:
+        # Save config as YAML for reference
+        with open(os.path.join(dir, 'config.yaml'), 'w') as file:
+            for key, value in config.items():
+                file.write(f'{key}: {value}\n')
+
 if __name__ == '__main__':
     import datetime
     # Example config (edit as needed)

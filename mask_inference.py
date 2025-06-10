@@ -192,6 +192,8 @@ def main():
         beam_profile = beam_section(beam_focused, beam_3d_sections_filepath, args.x_min, args.x_max,args.y_min,args.y_max)
         beam_profile_out_path = os.path.join(out_dir, "beam_profile.tiff")
         skimage.io.imsave(beam_profile_out_path, (beam_profile/1e6).astype(np.uint16))
+        beam_profile_out_path = os.path.join(out_dir, "beam_profile.png")
+        skimage.io.imsave(beam_profile_out_path, (beam_profile/1e6).astype(np.uint16))
         print(f"Saved beam profile for input mask to {beam_profile_out_path}")
 
     # Run inference for each selected key
@@ -272,7 +274,7 @@ def main():
                 if not os.path.exists(paper_beam_3d_sections_filepath):
                     os.makedirs(paper_beam_3d_sections_filepath)
                 beam_profile = beam_section(beam_focused, paper_beam_3d_sections_filepath, args.x_min, args.x_max,args.y_min,args.y_max)
-                beam_profile_out_path = os.path.join(out_dir, "beam_profile_paper_mask.tiff")
+                beam_profile_out_path = os.path.join(out_dir, "beam_profile_paper_mask.png")
                 skimage.io.imsave(beam_profile_out_path, (beam_profile/1e6).astype(np.uint16))
                 print(f"Saved beam profile for paper mask to {beam_profile_out_path}")
 

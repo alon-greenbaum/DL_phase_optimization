@@ -138,5 +138,6 @@ def main():
             skimage.io.imsave(paper_out_path, paper_out_img)
             print(f"Saved paper phase inference image for key {key} to {paper_out_path}")
 
+    
 if __name__ == "__main__":
     main()

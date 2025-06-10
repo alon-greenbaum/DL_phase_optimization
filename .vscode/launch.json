@@ -9,7 +9,7 @@
             "console": "integratedTerminal",
             "args": [
                 "--input_dir",
-                "./training_results/phase_model_20250605-150954/",
+                "./training_results/phase_model_20250610-134114",
                 //"./training_results/phase_model_20250508-165157/",
                 "--epoch",
                 "1",
@@ -19,15 +19,15 @@
                 "1",
                 //"--lens_approach",
                 //"fresnel",
-                "--empty_mask",
+                //"--empty_mask",
                 //"--paper_mask",
-                "example_optimized_phase.tiff",
+                //"example_optimized_phase.tiff",
                 //"--no_noise",
                 //"--max_intensity",
                 //"8.0e+10", // 5e4, 5e10
                 "--generate_beam_profile",
-                "--bead_volume",
-                "--plot_train_loss"
+                //"--bead_volume",
+                //"--plot_train_loss"
 
 
             ]
@@ -91,6 +91,18 @@
                 "-100",
                 "--x_max",
                 "100",
+            ]
+        },
+        {
+            "name": "Python: Test Beam Profile (Axicon)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test_beam_profile.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--config", "config.yaml",
+                "--axicon",
+                "--output_dir", "beam_axicon"
             ]
         }
     ]

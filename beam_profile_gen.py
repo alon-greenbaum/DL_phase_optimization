@@ -27,15 +27,24 @@ pixel_size_meters = 1e-6
 psf_width_meters = psf_width_pixels * pixel_size_meters
 numerical_aperture = 0.6
 
+def normalize_to_uint16(img):
+    #img = img.astype(np.float32)
+    img = img - img.min()
+    if img.max() > 0:
+        img = img / img.max()
+    img_uint16 = (img * 65535).astype(np.uint16)
+    return img_uint16
+
 # generate phase mask which is the input on SLM (spatial light modulator) 
-def phase_mask_gen(): 
+def phase_mask_gen(fwhm=0.0001): 
+    # default value for c is 0.0001
     x = list(range(-N//2,N//2))
     y = list(range(-N//2,N//2))
     [X, Y] = np.meshgrid(x,y)
     X = X*px
     Y = Y*px
-    c = 0.0001
-    mask = 1*np.exp(-(np.square(X) + np.square(Y))/(2*c**2))
+
+    mask = 1*np.exp(-(np.square(X) + np.square(Y))/(2*fwhm**2))
     # choose a mask
     # bessel mask
     #set_1 = np.logical_or(mask >= 0.76, mask <= 0.75)
@@ -47,6 +56,28 @@ def phase_mask_gen():
 
 # the beam propagate through SLM and lens and focus the beam at focal distance 
 def beam_profile_focus(mask): 
+    x = list(range(-N//2,N//2))
+    y = list(range(-N//2,N//2))
+    [X, Y] = np.meshgrid(x,y)
+    X = X*px
+    Y = Y*px
+    C1 = (np.pi/(wavelength*focal_length) * (np.square(X) + np.square(Y)))%(2*np.pi) # lens function lens as a phase transformer
+    B1 = np.exp(-1j*C1) # convert lens function to phase
+    B1=B1*mask # propgation multiply by lens, fourier proerties of lens
+    
+    xx = list(range(-N + 1, N + 1))
+    yy = list(range(-N + 1, N + 1))
+    [XX, YY] = np.meshgrid(xx,yy)
+    XX = XX*px
+    YY = YY*px
+    E1 = np.pad(B1,N//2)
+    Q1 = np.exp(1j * (np.pi/(wavelength*focal_length)) * (np.square(XX) + np.square(YY))) # Fresnel diffraction equation at distance = focal length
+    E2 = np.fft.ifftshift(np.fft.ifft2(np.fft.fft2(E1) * np.fft.fft2(Q1)))
+    ans = E2[N//2:3*N//2,N//2:3*N//2]
+    #return (np.fft.fftshift(np.fft.fft2(mask)))
+    return ans
+
+def beam_profile_lensless(mask): 
     x = list(range(-N//2,N//2))
     y = list(range(-N//2,N//2))
     [X, Y] = np.meshgrid(x,y)
@@ -114,8 +145,9 @@ def beam_section(layer,output_folder,x_min,x_max,y_min,y_max):
         pro_x = angularSpec(layer,x_dist[index]*px) # beam in [z,x] plane (camera coordinates)
         #return pro_x.shape
         profile[index] = pro_x[pro_x.shape[0]//2,pro_x.shape[1]//2+y_min-1:pro_x.shape[1]//2+y_max] # [z,y]
-        skimage.io.imsave(os.path.join(output_folder,str(index) + '.tiff'), (pro_x/1e7).astype('uint16'))
-    return profile
+        skimage.io.imsave(os.path.join(output_folder,str(index) + '.tiff'), normalize_to_uint16(pro_x))
+        #skimage.io.imsave(os.path.join(output_folder,str(index) + '.png'), (pro_x/1e7).astype('uint16'))
+    return normalize_to_uint16(profile)
 
 
 if __name__ == '__main__':
