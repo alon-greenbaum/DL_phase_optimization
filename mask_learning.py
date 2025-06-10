@@ -19,7 +19,8 @@ from cnn_utils_unet import OpticsDesignUnet
 from loss_utils import KDE_loss3D, jaccard_coeff
 #from beam_profile_gen import phase_gen
 import scipy.io as sio
-from torchmetrics.functional.classification import multiclass_focal_loss
+#from torchmetrics.functional.classification import multiclass_focal_loss
+from bessel import generate_axicon_phase_mask
 #import hdf5storage  # new import for saving MATLAB 7.3 files
 
 # systemctl restart --user xdg-desktop-portal-gnome
@@ -154,6 +155,9 @@ def learn_mask(config,res_dir):
     weights = config.get('weights', [1,1,1])
     num_classes = config['num_classes']
     focal_loss = config.get('focal_loss', False)
+    px = config['px']
+    wavelength = config['wavelength']
+    bessel_cone_angle_degrees = config.get('bessel_cone_angle_degrees', 1.0)
 
     
     # train on GPU if available
@@ -161,7 +165,12 @@ def learn_mask(config,res_dir):
     torch.backends.cudnn.benchmark = True
 
     #Set the mask_phase as the parameter to derive
-    mask_phase = np.zeros((mask_phase_pixels,mask_phase_pixels))
+    if config.get('initial_phase_mask', None) == "bessel":
+        mask_phase = generate_axicon_phase_mask(
+            (mask_phase_pixels, mask_phase_pixels), px*10**6, wavelength*10**9, bessel_cone_angle_degrees
+        )
+    else:
+        mask_phase = np.zeros((mask_phase_pixels,mask_phase_pixels))
     mask_phase = torch.from_numpy(mask_phase).type(torch.FloatTensor).to(device)
     mask_param = nn.Parameter(mask_phase)
     mask_param.requires_grad_()

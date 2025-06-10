@@ -1,0 +1,20 @@
+name: deepdesign
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - numpy
+  - scipy
+  - scikit-image
+  - matplotlib
+  - pyyaml
+  - h5py
+  - pip
+  - pip:
+      - torch
+      - torchvision
+      - torchaudio
+      - torchmetrics

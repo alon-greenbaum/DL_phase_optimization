@@ -139,15 +139,19 @@ def main():
     cnn_model.to(config['device'])
     cnn_model.load_state_dict(torch.load(args.model_path, map_location=config['device']))
     cnn_model.eval()
-    for layer in cnn_model.modules():
+    """ for layer in cnn_model.modules():
         if isinstance(layer, nn.Conv2d):
             print(layer.weight.shape)
     exit()
-
+ """
     # Create output directory for inference results using current datetime.
     dt_str = datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir = os.path.join(args.res_dir, dt_str)
-    makedirs(out_dir)
+    # create dir if it does not exist
+    print(f"Creating output directory: {out_dir}")
+    if not os.path.exists(out_dir):
+        print(f"Output directory {out_dir} does not exist, creating it.")
+        makedirs(out_dir)
     
     if args.plot_train_loss:
         loss_file = os.path.join(args.input_dir, "train_losses.txt")
