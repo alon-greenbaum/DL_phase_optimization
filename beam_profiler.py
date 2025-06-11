@@ -6,7 +6,7 @@ import skimage.io
 import matplotlib.pyplot as plt
 from datetime import datetime
 from data_utils import load_config
-from beam_profile_gen import beam_profile_focus, beam_section, phase_mask_gen
+from beam_profile_gen import BeamProfiler
 from bessel import generate_axicon_phase_mask
 from physics_utils import PhysicalLayer
 
@@ -16,13 +16,13 @@ def main():
     parser.add_argument("--mask", type=str, default="", help="Optional: path to phase mask tiff (default: zeros)")
     parser.add_argument("--axicon", action="store_true", help="Use axicon phase mask (Bessel beam)")
     parser.add_argument("--output_dir", type=str, default="beam_profile_test", help="Output directory")
-    parser.add_argument("--x_min", type=int, default=-100)
-    parser.add_argument("--x_max", type=int, default=100)
-    parser.add_argument("--y_min", type=int, default=-50)
-    parser.add_argument("--y_max", type=int, default=50)
+    parser.add_argument("--z_min", type=int, default=0)
+    parser.add_argument("--z_max", type=int, default=200)
+    parser.add_argument("--y_min", type=int, default=-100)
+    parser.add_argument("--y_max", type=int, default=100)
     args = parser.parse_args()
 
-    # Create timestamped subfolder
+    # Create a timestamped subfolder output dir
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     output_subdir = os.path.join(args.output_dir, timestamp)
     os.makedirs(output_subdir, exist_ok=True)
@@ -49,6 +49,17 @@ def main():
         mask_np = skimage.io.imread(args.mask)
     else:
         mask_np = np.zeros((N, N), dtype=np.float32)
+        
+    # save the mask as png figure for easy viewing
+    mask_png_path = os.path.join(output_subdir, "mask.png")
+    plt.figure(figsize=(8, 6))
+    plt.imshow(mask_np, cmap='gray', aspect='auto')
+    plt.colorbar()
+    plt.title("Phase Mask")
+    plt.tight_layout()
+    plt.savefig(mask_png_path)
+    print(f"Saved phase mask as PNG to {mask_png_path}")
+        
 
     mask_tensor = torch.from_numpy(mask_np).type(torch.FloatTensor).to(device)
 
@@ -74,8 +85,9 @@ def main():
     print("Generating beam profile...") 
     output_beam_sections_dir = os.path.join(output_subdir, "beam_sections")
     os.makedirs(output_beam_sections_dir, exist_ok=True)
-    beam_profile = beam_section(
-        output_layer, output_beam_sections_dir, args.x_min, args.x_max, args.y_min, args.y_max
+    beam_profiler = BeamProfiler(config)
+    beam_profile = beam_profiler.generate_beam_cross_section(
+        output_layer, output_beam_sections_dir, (args.z_min, args.z_max), (args.y_min, args.y_max)
     )
 
     # Save as TIFF (like mask_inference)

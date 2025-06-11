@@ -424,6 +424,26 @@ class PhysicalLayer(nn.Module):
         output_layer = U_output_4f[:, :, -self.N:, -self.N:]
         return output_layer
 
+    def angular_spectrum_prop(self, output_layer, x):
+        """
+        Angular spectrum propagation for a given output_layer and x value.
+
+        Args:
+            output_layer (torch.Tensor): The complex field to propagate.
+            x (float or int): The x value for propagation.
+
+        Returns:
+            torch.Tensor: The propagated intensity (real-valued).
+        """
+        U1 = torch.fft.ifft2(
+            torch.fft.ifftshift(
+                torch.fft.fftshift(torch.fft.fft2(output_layer)) 
+                * torch.exp(1j * self.k * self.gamma_cust * x * self.px)
+            )
+        )
+        U1 = torch.real(U1 * torch.conj(U1))
+        return U1
+    
     def forward(self, mask_param, xyz):
 
         Nbatch, Nemitters = xyz.shape[0], xyz.shape[1]
@@ -551,13 +571,7 @@ class PhysicalLayer(nn.Module):
                     z = xyz[i, j, 2].type(torch.LongTensor)
 
                     x_ori = xyz[i, j, 0].type(torch.LongTensor)
-                    U1 = torch.fft.ifft2(
-                        torch.fft.ifftshift(
-                            torch.fft.fftshift(torch.fft.fft2(output_layer)) 
-                            * torch.exp(1j * self.k * self.gamma_cust * x * self.px)
-                            )
-                        ) # should this 1e-6 be self.px?
-                    U1 = torch.real(U1 * torch.conj(U1))
+                    U1 = self.angular_spectrum_prop(output_layer, x) # angular spectrum propagation
 
                     # Here we assume that the beam is being dithered up and down
                     intensity = torch.sum(U1[0, 0, :, int((self.N//2-1) + z)]) # if px is 1e-6 why multiply by 1e6?

@@ -27,7 +27,7 @@ data_path: "beads_img_defocus"
 path_save: "data_mask_learning"
 path_train: "traininglocations"
 ori_intensity: 20000  # arbitrary units
-laser_beam_FWHC: 1.8e-3  # in m, the size of the FWHM of the Gaussian beam 0.6 with 3x BE
+laser_beam_FWHC: 425.0e-6  # in m, the size of the FWHM of the Gaussian beam (0.6mm with 3x BE)
 max_defocus: 41  # um for generating the PSFs
 learning_rate_scheduler_factor: 0.1
 learning_rate_scheduler_patience: 5
@@ -42,7 +42,7 @@ ratio_input_output_image_size: 1  # default with Unet 1, with ResNet 4
 z_range_cost_function: [0,0] # default 1
 use_unet: true
 num_classes: 1
-lens_approach: "4f" # "fourier" or "fresnel"
+lens_approach: "lensless" # "fourier" or "fresnel"
 power_2: 1000 # pad to this power for fourier transform
 bfp_dir: "back_focal_plane"
 dropout: 0.5
@@ -62,5 +62,5 @@ weights: [1.0,1.0,1.5] # cross entropy loss weights (must be floats)
 # try focal loss
 # changing input z slices
 initial_phase_mask: "bessel"
-bessel_cone_angle_degrees: 1.0
+bessel_cone_angle_degrees: 0.1
 focal_length_2: 75.0e-3  # [m] focal length of the second lens

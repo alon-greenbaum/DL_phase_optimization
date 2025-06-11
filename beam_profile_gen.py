@@ -1,176 +1,220 @@
-# -*- coding: utf-8 -*-
-
 import os
-
 import numpy as np
-# import scipy.integrate
-# import scipy.signal
-# import scipy.special
 import skimage.io
-import random
-# from skimage import filters
-# from skimage.transform import rescale, resize
-# from scipy.io import savemat
-# import scipy.io as sio
 
-from PIL import Image
-# import matplotlib.pyplot as plt
-# from scipy import interpolate
-import sys
-N = 500 # grid size
-px = 1e-6 # pixel size (um)
-focal_length = 2e-3
-wavelength = 0.561e-6
-refractive_index = 1.0
-psf_width_pixels = 101
-pixel_size_meters = 1e-6
-psf_width_meters = psf_width_pixels * pixel_size_meters
-numerical_aperture = 0.6
-
-def normalize_to_uint16(img):
-    #img = img.astype(np.float32)
-    img = img - img.min()
-    if img.max() > 0:
-        img = img / img.max()
-    img_uint16 = (img * 65535).astype(np.uint16)
-    return img_uint16
-
-# generate phase mask which is the input on SLM (spatial light modulator) 
-def phase_mask_gen(fwhm=0.0001): 
-    # default value for c is 0.0001
-    x = list(range(-N//2,N//2))
-    y = list(range(-N//2,N//2))
-    [X, Y] = np.meshgrid(x,y)
-    X = X*px
-    Y = Y*px
-
-    mask = 1*np.exp(-(np.square(X) + np.square(Y))/(2*fwhm**2))
-    # choose a mask
-    # bessel mask
-    #set_1 = np.logical_or(mask >= 0.76, mask <= 0.75)
-    #mask[set_1] = 0.0
-    # gaussian mask
-    #set_2 = mask <= 0.75
-    #mask[set_2] = 0.75
-    return mask
-
-# the beam propagate through SLM and lens and focus the beam at focal distance 
-def beam_profile_focus(mask): 
-    x = list(range(-N//2,N//2))
-    y = list(range(-N//2,N//2))
-    [X, Y] = np.meshgrid(x,y)
-    X = X*px
-    Y = Y*px
-    C1 = (np.pi/(wavelength*focal_length) * (np.square(X) + np.square(Y)))%(2*np.pi) # lens function lens as a phase transformer
-    B1 = np.exp(-1j*C1) # convert lens function to phase
-    B1=B1*mask # propgation multiply by lens, fourier proerties of lens
+class BeamProfiler:
+    """
+    A class to simulate beam propagation through optical elements.
     
-    xx = list(range(-N + 1, N + 1))
-    yy = list(range(-N + 1, N + 1))
-    [XX, YY] = np.meshgrid(xx,yy)
-    XX = XX*px
-    YY = YY*px
-    E1 = np.pad(B1,N//2)
-    Q1 = np.exp(1j * (np.pi/(wavelength*focal_length)) * (np.square(XX) + np.square(YY))) # Fresnel diffraction equation at distance = focal length
-    E2 = np.fft.ifftshift(np.fft.ifft2(np.fft.fft2(E1) * np.fft.fft2(Q1)))
-    ans = E2[N//2:3*N//2,N//2:3*N//2]
-    #return (np.fft.fftshift(np.fft.fft2(mask)))
-    return ans
+    This class encapsulates the parameters and methods for simulating
+    the propagation of a light beam, including phase mask generation,
+    propagation to a focal point, and propagation using the angular
+    spectrum method.
+    """
 
-def beam_profile_lensless(mask): 
-    x = list(range(-N//2,N//2))
-    y = list(range(-N//2,N//2))
-    [X, Y] = np.meshgrid(x,y)
-    X = X*px
-    Y = Y*px
-    C1 = (np.pi/(wavelength*focal_length) * (np.square(X) + np.square(Y)))%(2*np.pi) # lens function lens as a phase transformer
-    B1 = np.exp(-1j*C1) # convert lens function to phase
-    B1=B1*mask # propgation multiply by lens, fourier proerties of lens
-    
-    xx = list(range(-N + 1, N + 1))
-    yy = list(range(-N + 1, N + 1))
-    [XX, YY] = np.meshgrid(xx,yy)
-    XX = XX*px
-    YY = YY*px
-    E1 = np.pad(B1,N//2)
-    Q1 = np.exp(1j * (np.pi/(wavelength*focal_length)) * (np.square(XX) + np.square(YY))) # Fresnel diffraction equation at distance = focal length
-    E2 = np.fft.ifftshift(np.fft.ifft2(np.fft.fft2(E1) * np.fft.fft2(Q1)))
-    ans = E2[N//2:3*N//2,N//2:3*N//2]
-    #return (np.fft.fftshift(np.fft.fft2(mask)))
-    return ans
+    def __init__(self, config: dict):
+        """
+        Initializes the BeamSimulator with parameters from a config dictionary.
+        
+        Args:
+            config (dict): A dictionary containing all simulation parameters.
+        """
+        # Unpack the configuration dictionary into class attributes
+        for key, value in config.items():
+            setattr(self, key, value)
+        
+        self._create_coordinate_grids()
 
+    def _create_coordinate_grids(self):
+        """
+        Pre-calculates coordinate grids to avoid redundant computations.
+        These grids represent the physical dimensions of the simulation space.
+        """
+        # Primary grid
+        xy_range = np.arange(-self.N // 2, self.N // 2)
+        X, Y = np.meshgrid(xy_range, xy_range)
+        self.X_m = X * self.px  # Grid coordinates in meters
+        self.Y_m = Y * self.px  # Grid coordinates in meters
 
-# generate profile along illumination axis using angular specturm, z is the propagate distance. 
-def angularSpec(layer,z):
-    k = 2*np.pi/wavelength
-    phy_x = N*px # physical width (meters) 
-    phy_y = N*px # physical length (meters) 
-    obj_size = layer.shape
-    # generate meshgrid
-    dx = np.linspace(-phy_x/2,phy_x/2,obj_size[1])
-    dy = np.linspace(-phy_y/2,phy_y/2,obj_size[0])
-    Fs_x = obj_size[1]/phy_x
-    Fs_y = obj_size[0]/phy_y
-    dFx = Fs_x/obj_size[1]
-    dFy = Fs_y/obj_size[0]
-    Fx = np.arange(-Fs_x/2,Fs_x/2,dFx)
-    Fy = np.arange(-Fs_y/2,Fs_y/2,dFy)
-    # alpha and beta (wavenumber components) 
-    alpha = wavelength*Fx
-    beta = wavelength*Fy
-    [ALPHA,BETA] = np.meshgrid(alpha,beta)
-    #gamm_cust = np.zeros((len(alpha),len(beta)))
-    gamma_cust = np.sqrt(1 - np.square(ALPHA) - np.square(BETA))
-    U1 = np.fft.ifft2(np.fft.ifftshift(np.fft.fftshift(np.fft.fft2(layer))*np.exp(1j*k*gamma_cust*z)))
-    
-    return np.real(U1 * np.conj(U1))
+        # Padded grid for Fresnel propagation
+        xy_range_padded = np.arange(-self.N + 1, self.N + 1)
+        XX_padded, YY_padded = np.meshgrid(xy_range_padded, xy_range_padded)
+        self.XX_m_padded = XX_padded * self.px
+        self.YY_m_padded = YY_padded * self.px
 
-# generate a tilted pahse 
-def phase_gen():
-    line = np.linspace(0,0,500)
-    
-    ans = np.tile(line,(500,1))
-    # another gradient
-    # ans = ans.transpose()
-    #return 4*(np.random.random((500,500)) - 0.5)
-    return np.tile(line,(500,1)) 
+    @staticmethod
+    def normalize_to_uint16(img: np.ndarray) -> np.ndarray:
+        """
+        Normalizes a numpy array to the uint16 range [0, 65535].
+        
+        Args:
+            img (np.ndarray): The input image array.
+            
+        Returns:
+            np.ndarray: The normalized image as a uint16 array.
+        """
+        img_float = img.astype(np.float32)
+        img_float -= img_float.min()
+        max_val = img_float.max()
+        if max_val > 0:
+            img_float /= max_val
+        return (img_float * 65535).astype(np.uint16)
 
-# used to generate beam profile in 3D space
-# confused about which one is x and y
-def beam_section(layer,output_folder,x_min,x_max,y_min,y_max):
-    profile = np.zeros((x_max-x_min,101))
-    x_dist = range(x_min,x_max,1)
-    for index in range(len(x_dist)):
-        print(index)
-        pro_x = angularSpec(layer,x_dist[index]*px) # beam in [z,x] plane (camera coordinates)
-        #return pro_x.shape
-        profile[index] = pro_x[pro_x.shape[0]//2,pro_x.shape[1]//2+y_min-1:pro_x.shape[1]//2+y_max] # [z,y]
-        skimage.io.imsave(os.path.join(output_folder,str(index) + '.tiff'), normalize_to_uint16(pro_x))
-        #skimage.io.imsave(os.path.join(output_folder,str(index) + '.png'), (pro_x/1e7).astype('uint16'))
-    return normalize_to_uint16(profile)
+    def generate_gaussian_mask(self, fwhm: float = 0.0001) -> np.ndarray:
+        """
+        Generates a Gaussian amplitude mask.
+        
+        Args:
+            fwhm (float): Full Width at Half Maximum of the Gaussian profile.
+            
+        Returns:
+            np.ndarray: The generated Gaussian mask.
+        """
+        sigma = fwhm / (2 * np.sqrt(2 * np.log(2)))
+        return np.exp(-(np.square(self.X_m) + np.square(self.Y_m)) / (2 * sigma**2))
+
+    def propagate_to_focus(self, complex_mask: np.ndarray) -> np.ndarray:
+        """
+        Propagates a masked beam to the focal plane of a lens using Fresnel diffraction.
+        
+        Args:
+            complex_mask (np.ndarray): The complex field at the initial plane (mask).
+            
+        Returns:
+            np.ndarray: The complex field at the focal plane.
+        """
+        # Phase transformation of the lens
+        lens_phase = (np.pi / (self.wavelength * self.focal_length)) * (np.square(self.X_m) + np.square(self.Y_m))
+        incident_field = complex_mask * np.exp(-1j * lens_phase)
+
+        # Fresnel propagation kernel
+        fresnel_kernel = np.exp(1j * (np.pi / (self.wavelength * self.focal_length)) * (np.square(self.XX_m_padded) + np.square(self.YY_m_padded)))
+        
+        # Perform propagation using the convolution theorem
+        padded_field = np.pad(incident_field, self.N // 2)
+        propagated_field_fft = np.fft.fft2(padded_field) * np.fft.fft2(fresnel_kernel)
+        propagated_field = np.fft.ifftshift(np.fft.ifft2(propagated_field_fft))
+
+        # Crop the result to the original size
+        return propagated_field[self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
+
+    def angular_spectrum_propagation(self, field: np.ndarray, z: float) -> np.ndarray:
+        """
+        Propagates a field over a distance z using the angular spectrum method.
+        
+        Args:
+            field (np.ndarray): The initial complex field.
+            z (float): The propagation distance in meters.
+            
+        Returns:
+            np.ndarray: The intensity (real-valued) of the propagated field.
+        """
+        k = 2 * np.pi / self.wavelength
+        
+        # Spatial frequency coordinates
+        fx = np.fft.fftshift(np.fft.fftfreq(self.N, d=self.px))
+        fy = np.fft.fftshift(np.fft.fftfreq(self.N, d=self.px))
+        Fx, Fy = np.meshgrid(fx, fy)
+
+        # Wave number components
+        alpha = self.wavelength * Fx
+        beta = self.wavelength * Fy
+        
+        # The argument of the square root must be non-negative
+        gamma_sq = 1 - np.square(alpha) - np.square(beta)
+        gamma = np.sqrt(np.maximum(gamma_sq, 0))
+
+        # Transfer function for propagation
+        transfer_function = np.exp(1j * k * gamma * z)
+        
+        field_fft = np.fft.fftshift(np.fft.fft2(field))
+        propagated_field_fft = field_fft * transfer_function
+        propagated_field = np.fft.ifft2(np.fft.ifftshift(propagated_field_fft))
+
+        # Return the intensity (magnitude squared)
+        return np.abs(propagated_field)**2
+
+    def generate_beam_cross_section(self, initial_field: np.ndarray, output_folder: str, z_range_px: tuple, y_slice_px: tuple) -> np.ndarray:
+        """
+        Generates a 2D cross-section of the beam by stacking 1D slices along the z-axis.
+        
+        Args:
+            initial_field (np.ndarray): The complex field at z=0.
+            output_folder (str): Folder to save 2D intensity profiles at each z-step.
+            z_range_px (tuple): (min, max) propagation distance in pixels.
+            y_slice_px (tuple): (min, max) slice of the y-axis in pixels.
+            
+        Returns:
+            np.ndarray: A 2D array representing the beam's cross-section (ZY plane).
+        """
+        os.makedirs(output_folder, exist_ok=True)
+        z_min_px, z_max_px = z_range_px
+        y_min_px, y_max_px = y_slice_px
+        
+        num_z_steps = z_max_px - z_min_px
+        cross_section_profile = np.zeros((num_z_steps, y_max_px - y_min_px))
+
+        print(f"Generating beam cross-section for {num_z_steps} slices...")
+        for i, z_step_px in enumerate(range(z_min_px, z_max_px)):
+            z_dist_m = z_step_px * self.px
+            
+            # Propagate field and get intensity
+            intensity_at_z = self.angular_spectrum_propagation(initial_field, z_dist_m)
+
+            # Extract the central 1D slice along the y-axis
+            center_row_idx = intensity_at_z.shape[0] // 2
+            center_col_idx = intensity_at_z.shape[1] // 2
+            cross_section_profile[i,:] = intensity_at_z[center_row_idx, center_col_idx + y_min_px : center_col_idx + y_max_px]
+
+            # Save the full 2D intensity profile at the current z-step
+            save_path = os.path.join(output_folder, f'intensity_z_{i:04d}.tiff')
+            skimage.io.imsave(save_path, self.normalize_to_uint16(intensity_at_z))
+            
+        print("Cross-section generation complete.")
+        return self.normalize_to_uint16(cross_section_profile)
 
 
 if __name__ == '__main__':
-    # generate psf for defocus, only for once
-    # generate_psf()
-    mask_real = phase_mask_gen()
-    #mask_real = skimage.io.imread('mask_real_epoch_178_1600.tiff')
-    #skimage.io.imsave('mask.tiff',mask_real.astype('float32'))
-    
+    # Define all simulation parameters in a configuration dictionary
+    config = {
+        'N': 500,                      # grid size
+        'px': 1e-6,                    # pixel size (m)
+        'focal_length': 2e-3,          # focal length (m)
+        'wavelength': 0.561e-6,        # wavelength (m)
+        'refractive_index': 1.0,
+    }
 
-    #sys.exit()
-    #mask_phase = skimage.io.imread('results/phase_model__20221103-214157/mask_phase_epoch_0_0.tiff')
-    #mask_phase = skimage.io.imread('phase_learned/mask_phase_epoch_0_0.tiff')
-    #mask_phase = 0*2*np.pi*(np.random.rand(500,500))
-    mask_phase = phase_gen()
-    #mask_phase = skimage.io.imread('./results/model_fig4/mask_phase_epoch_100_0.tiff')
-    mask_param = mask_real*np.exp(1j*mask_phase)
-    layer = beam_profile_focus(mask_param)
-    #ans = angularSpec(layer,0*1e-6)
-    profile = beam_section(layer)
-    skimage.io.imsave('aaa.tiff',(profile/1e6).astype('uint16'))
-    #ans = img_gen(layer)
-    
-    # 253 
-    
+    # 1. Initialize the simulator with the configuration
+    simulator = BeamSimulator(config)
 
+    # 2. Create the initial complex mask
+    # Amplitude part (e.g., a Gaussian mask)
+    amplitude_mask = simulator.generate_gaussian_mask(fwhm=0.0001)
+    
+    # Phase part (e.g., a simple linear tilt)
+    phase_values = np.linspace(0, 2 * np.pi, config['N'])
+    phase_mask = np.tile(phase_values, (config['N'], 1)) # Creates a horizontal phase ramp
+    
+    # Combine amplitude and phase into a complex mask
+    complex_mask = amplitude_mask * np.exp(1j * phase_mask)
+
+    # 3. Propagate the beam to the focal plane to get the initial field for 3D propagation
+    field_at_focus = simulator.propagate_to_focus(complex_mask)
+    skimage.io.imsave('field_at_focus_intensity.tiff', simulator.normalize_to_uint16(np.abs(field_at_focus)**2))
+
+    # 4. Generate a 3D beam profile and save its cross-section
+    # Define the range for propagation (z-axis) and slicing (y-axis) in pixels
+    z_range_pixels = (0, 200)       # Propagate from z=0 to z=200 pixels (in steps of 1 pixel)
+    y_slice_pixels = (-50, 50)      # Slice the central 100 pixels along the y-axis
+
+    # Generate the cross-section (ZY plane)
+    beam_profile_zy = simulator.generate_beam_cross_section(
+        initial_field=field_at_focus,
+        output_folder='beam_cross_sections',
+        z_range_px=z_range_pixels,
+        y_slice_px=y_slice_pixels
+    )
+
+    # 5. Save the final cross-section image
+    skimage.io.imsave('final_beam_cross_section_ZY.tiff', beam_profile_zy)
+    print("Simulation finished. Final cross-section saved to 'final_beam_cross_section_ZY.tiff'")
