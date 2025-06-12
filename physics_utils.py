@@ -178,7 +178,7 @@ class PhysicalLayer(nn.Module):
         psf_width_pixels = config['psf_width_pixels']
         psf_edge_remove = config['psf_edge_remove']
         laser_beam_FWHC = config['laser_beam_FWHC']
-        refractive_index = config['refractive_index']
+        self.refractive_index = config['refractive_index']
         max_defocus = config['max_defocus']
         image_volume = config['image_volume']
         psf_keep_radius = config['psf_keep_radius']
@@ -229,8 +229,8 @@ class PhysicalLayer(nn.Module):
         xx = list(range(-N + 1, N + 1))
         yy = list(range(-N + 1, N + 1))
         [XX, YY] = np.meshgrid(xx, yy)
-        XX = XX * self.px
-        YY = YY * self.px
+        self.XX = XX * self.px
+        self.YY = YY * self.px
 
         
         # initialize phase mask
@@ -244,7 +244,7 @@ class PhysicalLayer(nn.Module):
         self.B1 = torch.from_numpy(self.B1).type(torch.cfloat).to(device)
     
         # need to check if it relates to air or not added refractive index
-        Q1 = np.exp(1j * (np.pi * refractive_index / (self.wavelength * self.focal_length)) * (
+        Q1 = np.exp(1j * (np.pi * self.refractive_index / (self.wavelength * self.focal_length)) * (
                     np.square(XX) + np.square(YY)))  # Fresnel diffraction equation at distance = focal length
         self.Q1 = torch.from_numpy(Q1).type(torch.cfloat).to(device)
 
@@ -254,11 +254,11 @@ class PhysicalLayer(nn.Module):
         self.B2 = torch.from_numpy(self.B2).type(torch.cfloat).to(device)
 
         # Q2 for propagation over self.focal_length_2
-        Q2_val = np.exp(1j * (np.pi * refractive_index / (self.wavelength * self.focal_length_2)) * (np.square(XX) + np.square(YY)))
+        Q2_val = np.exp(1j * (np.pi * self.refractive_index / (self.wavelength * self.focal_length_2)) * (np.square(self.XX) + np.square(self.YY)))
         self.Q2 = torch.from_numpy(Q2_val).type(torch.cfloat).to(device)
         
         # angular specturm
-        k = 2 * refractive_index * np.pi / self.wavelength
+        k = 2 * self.refractive_index * np.pi / self.wavelength
         self.k = k
         phy_x = N * self.px  # physical width (meters)
         phy_y = N * self.px  # physical length (meters)
@@ -271,8 +271,8 @@ class PhysicalLayer(nn.Module):
         Fx = np.arange(-Fs_x / 2, Fs_x / 2, dFx)
         Fy = np.arange(-Fs_y / 2, Fs_y / 2, dFy)
         # alpha and beta (wavenumber components) 
-        alpha = refractive_index * self.wavelength * Fx
-        beta = refractive_index * self.wavelength * Fy
+        alpha = self.refractive_index * self.wavelength * Fx
+        beta = self.refractive_index * self.wavelength * Fy
         [ALPHA, BETA] = np.meshgrid(alpha, beta)
         # go over and make sure that it is not complex
         gamma_cust = np.zeros_like(ALPHA)
@@ -383,7 +383,7 @@ class PhysicalLayer(nn.Module):
         Ul = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1)) # light directly incident of the lens
         Ul_cropped = Ul[:, :, -self.N:, -self.N:]
         if self.aperature == True:
-            Ul_cropped = circular_aperature(Ul_cropped,self.device)
+            Ul_cropped = self.circular_aperature(Ul_cropped,self.device)
         #Ul_cropped = Ul[-self.N:, -self.N:]
         Ul_prime = Ul_cropped * self.B1 # light after the lens
         Ul_prime_pad = F.pad(Ul_prime, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
@@ -431,6 +431,30 @@ class PhysicalLayer(nn.Module):
         U1 = torch.real(U1 * torch.conj(U1))
         return U1
     
+    def fresnel_propagation(self, input_img, z):
+        """
+        Fresnel propagation for a given output_layer and z pixel distance.
+
+        Args:
+            output_layer (torch.Tensor): The complex field to propagate.
+            z (float or int): The z pixel distance for propagation.
+
+        Returns:
+            torch.Tensor: The propagated intensity (real-valued).
+        """
+        Q = np.exp(1j * (np.pi * self.refractive_index / (self.wavelength * z)) * (
+                    np.square(self.XX) + np.square(self.YY)))  # Fresnel diffraction equation
+        Q = torch.from_numpy(Q).type(torch.cfloat).to(self.device)
+
+        #Q1 = np.exp(1j * (np.pi * refractive_index / (self.wavelength * self.focal_length)) * (
+        #            np.square(XX) + np.square(YY)))  # Fresnel diffraction equation at distance = focal length
+        #self.Q1 = torch.from_numpy(Q1).type(torch.cfloat).to(device)
+        Uo_pad = F.pad(input_img, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
+        U1 = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(Q)) # light directly incident of the lens
+        U1_cropped = U1[-self.N:, -self.N:]
+        U1_intensity = torch.real(U1_cropped * torch.conj(U1_cropped))
+        return U1_intensity
+    
     @staticmethod
     def normalize_to_uint16(img: np.ndarray) -> np.ndarray:
         """
@@ -453,7 +477,7 @@ class PhysicalLayer(nn.Module):
             img_float /= max_val
         return (img_float * 65535).astype(np.uint16)
     
-    def generate_beam_cross_section(self, initial_field: np.ndarray, output_folder: str, z_range_px: tuple, y_slice_px: tuple) -> np.ndarray:
+    def generate_beam_cross_section(self, initial_field: np.ndarray, output_folder: str, z_range_px: tuple, y_slice_px: tuple, asm: bool = True) -> np.ndarray:
         """
         Generates a 2D cross-section of the beam by stacking 1D slices along the z-axis.
         
@@ -477,9 +501,14 @@ class PhysicalLayer(nn.Module):
 
         print(f"Generating beam cross-section for {num_z_steps} slices...")
         for i, z_px in enumerate(range(z_min_px, z_max_px, z_step)):
-            
-            # Propagate field and get intensity
-            intensity_at_z = self.angular_spectrum_propagation(initial_field, z_px)
+            if z_px == 0:
+                intensity_at_z = initial_field
+            else:
+                # Propagate field and get intensity
+                if asm:
+                    intensity_at_z = self.angular_spectrum_propagation(initial_field, z_px)
+                else:
+                    intensity_at_z = self.fresnel_propagation(initial_field, z_px)
 
             # Extract the central 1D slice along the y-axis
             center_row_idx = intensity_at_z.shape[0] // 2

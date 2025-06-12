@@ -1,12 +1,27 @@
 import tifffile
 import numpy as np
-from scipy.interpolate import interp1d
+from scipy.optimize import curve_fit
 
-def calculate_fwhm(image_path):
+# Define a 2D Gaussian function
+def gaussian_2d(xy, amplitude, xo, yo, sigma_x, sigma_y, offset):
     """
-    Calculates the FWHM of a Gaussian distribution in a TIFF image.
-    Assumes the Gaussian is roughly centered and finds FWHM along the
-    row with the maximum intensity.
+    2D Gaussian function.
+    xy: tuple (x_coords, y_coords)
+    amplitude: peak intensity
+    xo, yo: center coordinates
+    sigma_x, sigma_y: standard deviations in x and y
+    offset: background level
+    """
+    x, y = xy
+    a = 1 / (2 * sigma_x**2)
+    b = 1 / (2 * sigma_y**2)
+    g = offset + amplitude * np.exp(-(a * (x - xo)**2 + b * (y - yo)**2))
+    return g.ravel() # Flatten the 2D array for curve_fit
+
+def calculate_fwhm_2d_gaussian(image_path):
+    """
+    Calculates the FWHM in x and y directions by fitting a 2D Gaussian
+    to the entire image.
     """
     try:
         # 1. Read the TIFF image
@@ -26,107 +41,144 @@ def calculate_fwhm(image_path):
         print(f"Error: Image must be 2D or 3D (for color). Found {img.ndim} dimensions.")
         return None
 
-    # Find the row and column of the maximum intensity
-    max_intensity_idx = np.unravel_index(np.argmax(img), img.shape)
-    peak_row = max_intensity_idx[0]
-    peak_col = max_intensity_idx[1]
-
-    # 2. Extract a 1D profile (cross-section through the peak)
-    # We'll take the row profile for now. You could also do a column profile
-    # and average the FWHMs, or fit a 2D Gaussian for more accuracy.
-    profile = img[peak_row, :]
-
-    # 3. Find the maximum intensity
-    max_val = np.max(profile)
-
-    # 4. Calculate half-maximum
-    half_max = max_val / 2.0
-
-    # Subtract baseline if necessary (e.g., if there's a constant offset)
-    # For a perfect Gaussian, the minimum should be close to zero.
-    # If your image has a significant background, consider subtracting it:
-    # baseline = np.min(profile)
-    # profile_no_baseline = profile - baseline
-    # max_val_no_baseline = np.max(profile_no_baseline)
-    # half_max_no_baseline = max_val_no_baseline / 2.0 + baseline # Add baseline back to get absolute intensity for crossing points
-
-    # 5. Find the points at half-maximum using interpolation for accuracy
-    # Create an x-axis for the profile
-    x_coords = np.arange(len(profile))
-
-    # Find where the profile crosses the half-maximum value
-    # We'll use interpolation to get a more precise crossing point
-    # rather than just pixel indices.
-
-    # Find the indices where the intensity is greater than or equal to half_max
-    indices_above_half_max = np.where(profile >= half_max)[0]
-
-    if len(indices_above_half_max) < 2:
-        print("Could not find enough points above half maximum to calculate FWHM.")
-        return None
-
-    # Get the leftmost and rightmost points where the intensity crosses half_max
-    # We'll interpolate for better precision
-    try:
-        # Left side: Find the first point where intensity rises above half_max
-        # Iterate from the center outwards to find the specific crossing points.
-        # This is more robust for non-ideal Gaussian profiles.
-
-        # Find the index closest to the peak on the left that is below half_max
-        left_idx = np.where(profile[:peak_col] < half_max)[0]
-        if len(left_idx) == 0: # If the left side starts above half_max
-            x1 = x_coords[0]
-        else:
-            left_idx = left_idx[-1] # Last point below half_max before rising
-            # Interpolate between this point and the next one (which is >= half_max)
-            f_left = interp1d(profile[left_idx:left_idx+2], x_coords[left_idx:left_idx+2])
-            x1 = f_left(half_max)
-
-        # Right side: Find the first point where intensity falls below half_max
-        right_idx = np.where(profile[peak_col:] < half_max)[0]
-        if len(right_idx) == 0: # If the right side ends above half_max
-            x2 = x_coords[-1]
-        else:
-            right_idx = right_idx[0] + peak_col # First point below half_max after falling
-            # Interpolate between this point and the previous one (which is >= half_max)
-            f_right = interp1d(profile[right_idx-1:right_idx+1][::-1], x_coords[right_idx-1:right_idx+1][::-1])
-            x2 = f_right(half_max)
-
-    except ValueError:
-        print("Could not interpolate FWHM crossing points. The profile might not be a clear Gaussian.")
-        return None
-
-    # 6. Calculate the distance (FWHM)
-    fwhm = x2 - x1
-
     print(f"Image loaded: {image_path}")
     print(f"Image shape: {img.shape}")
-    print(f"Peak intensity located at pixel ({peak_row}, {peak_col})")
-    print(f"Maximum intensity: {max_val:.2f}")
-    print(f"Half maximum intensity: {half_max:.2f}")
-    print(f"Calculated FWHM (along row {peak_row}): {fwhm:.2f} pixels")
 
-    return fwhm
+    # Create meshgrid for x and y coordinates
+    ny, nx = img.shape
+    x = np.arange(nx)
+    y = np.arange(ny)
+    X, Y = np.meshgrid(x, y)
+
+    # Initial guess for parameters
+    # Amplitude: Max pixel value
+    # xo, yo: Center of the image (or peak location)
+    # sigma_x, sigma_y: A reasonable guess, e.g., image_size / 6
+    # offset: Min pixel value
+    max_val = np.max(img)
+    min_val = np.min(img)
+    initial_amplitude = max_val - min_val
+    initial_offset = min_val
+
+    # Find the approximate peak location for better initial guess
+    peak_y, peak_x = np.unravel_index(np.argmax(img), img.shape)
+
+    initial_sigma_x = nx / 10 # Rough guess
+    initial_sigma_y = ny / 10 # Rough guess
+
+    initial_guess = (initial_amplitude, peak_x, peak_y, initial_sigma_x, initial_sigma_y, initial_offset)
+
+    # Set bounds for parameters (optional, but good for stability)
+    # amplitude, xo, yo, sigma_x, sigma_y, offset
+    lower_bounds = [0, 0, 0, 0.1, 0.1, 0] # Sigmas must be positive
+    upper_bounds = [np.inf, nx, ny, nx, ny, max_val]
+
+    try:
+        # Perform the 2D Gaussian fit
+        # We need to flatten X, Y, and img for curve_fit
+        popt, pcov = curve_fit(gaussian_2d, (X.ravel(), Y.ravel()), img.ravel(),
+                               p0=initial_guess, bounds=(lower_bounds, upper_bounds))
+
+        # Extract fitted parameters
+        amplitude_fit, xo_fit, yo_fit, sigma_x_fit, sigma_y_fit, offset_fit = popt
+
+        # Calculate FWHM from fitted sigmas
+        fwhm_factor = 2 * np.sqrt(2 * np.log(2))
+        fwhm_x = fwhm_factor * sigma_x_fit
+        fwhm_y = fwhm_factor * sigma_y_fit
+
+        print("\n--- 2D Gaussian Fit Results ---")
+        print(f"Fitted Amplitude: {amplitude_fit:.2f}")
+        print(f"Fitted Center (xo, yo): ({xo_fit:.2f}, {yo_fit:.2f}) pixels")
+        print(f"Fitted Sigma X: {sigma_x_fit:.2f} pixels")
+        print(f"Fitted Sigma Y: {sigma_y_fit:.2f} pixels")
+        print(f"Fitted Offset (background): {offset_fit:.2f}")
+        print(f"Calculated FWHM X: {fwhm_x:.2f} pixels")
+        print(f"Calculated FWHM Y: {fwhm_y:.2f} pixels")
+
+        # You can return a dictionary with results
+        return {
+            'amplitude': amplitude_fit,
+            'center_x': xo_fit,
+            'center_y': yo_fit,
+            'sigma_x': sigma_x_fit,
+            'sigma_y': sigma_y_fit,
+            'offset': offset_fit,
+            'fwhm_x': fwhm_x,
+            'fwhm_y': fwhm_y
+        }
+
+    except RuntimeError as e:
+        print(f"2D Gaussian fit failed: {e}. The image might not be sufficiently Gaussian or initial guess was poor.")
+        return None
+    except ValueError as e:
+        print(f"Error during fitting: {e}. Check initial guess or bounds.")
+        return None
 
 if __name__ == "__main__":
-    # Example usage:
-    # Create a dummy TIFF image with a Gaussian for testing
+    image_path = "beam_axicon/20250612-140010/beam_sections/intensity_z_0099.tiff"
+    results_focused = calculate_fwhm_2d_gaussian(image_path)
+    if results_focused:
+        print("\n--- Summary of Focused Beam Results ---")
+        print(f"FWHM X: {results_focused['fwhm_x']:.2f} pixels")
+        print(f"FWHM Y: {results_focused['fwhm_y']:.2f} pixels")
+    """  # Example usage:
+    # Create a dummy TIFF image with a 2D Gaussian for testing
     img_size = 200
-    x = np.linspace(-10, 10, img_size)
-    y = np.linspace(-10, 10, img_size)
-    X, Y = np.meshgrid(x, y)
-    sigma_x = 2.5
-    sigma_y = 3.0 # Slightly elliptical Gaussian
-    amplitude = 255
-    gaussian_img = amplitude * np.exp(-((X**2 / (2 * sigma_x**2)) + (Y**2 / (2 * sigma_y**2))))
+    x_coords_grid = np.arange(img_size)
+    y_coords_grid = np.arange(img_size)
+    X_grid, Y_grid = np.meshgrid(x_coords_grid, y_coords_grid)
+
+    # Parameters for the dummy Gaussian
+    amplitude_true = 200
+    xo_true = 95.5 # Slightly off center
+    yo_true = 105.2 # Slightly off center
+    sigma_x_true = 10.0 # Wide in X
+    sigma_y_true = 5.0  # Narrow in Y (elliptical)
+    offset_true = 50 # Background
+
+    # Generate the 2D Gaussian image
+    dummy_gaussian_img = offset_true + amplitude_true * np.exp(
+        -(((X_grid - xo_true)**2 / (2 * sigma_x_true**2)) +
+          ((Y_grid - yo_true)**2 / (2 * sigma_y_true**2)))
+    )
+
+    # Add some noise to make it more realistic
+    dummy_gaussian_img += np.random.normal(0, 5, dummy_gaussian_img.shape)
+
+    # Ensure integer values for image (e.g., 8-bit image)
+    dummy_gaussian_img = np.clip(dummy_gaussian_img, 0, 255).astype(np.uint8)
 
     # Save the dummy image as a TIFF file
-    dummy_image_path = "gaussian_test_image.tif"
-    tifffile.imwrite(dummy_image_path, gaussian_img.astype(np.uint8)) # Save as 8-bit for simplicity
+    dummy_image_path = "gaussian_2d_test_image.tif"
+    tifffile.imwrite(dummy_image_path, dummy_gaussian_img)
 
-    image_path = "/home/regarry/dd_phase_optimization/beam_axicon/20250612-130812/beam_sections/intensity_z_0600.tiff"
-    # Now, calculate FWHM for the dummy image
-    fwhm_result = calculate_fwhm(image_path)
+    # Now, calculate FWHM for the dummy image using 2D fit
+    results = calculate_fwhm_2d_gaussian(dummy_image_path)
 
-    # You can also test with a non-existent path
-    # calculate_fwhm("non_existent_image.tif")
+    if results:
+        print("\n--- Summary of Results ---")
+        print(f"Average FWHM: {(results['fwhm_x'] + results['fwhm_y']) / 2:.2f} pixels")
+        # Example of how you might use the individual FWHM values
+        if abs(results['fwhm_x'] - results['fwhm_y']) > 1.0: # Arbitrary threshold for "elliptical"
+            print("Beam appears to be elliptical.")
+        else:
+            print("Beam appears to be approximately circular.")
+
+    print("\n" + "="*50 + "\n")
+
+    # Test with a very focused beam (where 1D profile might fail)
+    sigma_x_very_narrow = 1.0
+    sigma_y_very_narrow = 0.8
+    focused_gaussian_img = offset_true + amplitude_true * np.exp(
+        -(((X_grid - xo_true)**2 / (2 * sigma_x_very_narrow**2)) +
+          ((Y_grid - yo_true)**2 / (2 * sigma_y_very_narrow**2)))
+    )
+    focused_gaussian_img += np.random.normal(0, 5, focused_gaussian_img.shape)
+    focused_gaussian_img = np.clip(focused_gaussian_img, 0, 255).astype(np.uint8)
+    focused_image_path = "gaussian_focused_2d_test_image.tif"
+    tifffile.imwrite(focused_image_path, focused_gaussian_img)
+
+    print("\n--- Testing with a very focused beam (2D fit should handle it) ---")
+    """
+    

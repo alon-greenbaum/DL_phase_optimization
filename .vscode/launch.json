@@ -103,7 +103,7 @@
                 "--config", "config.yaml",
                 //"--axicon",
                 "--output_dir", "beam_axicon",
-                "--fresnel_lens_pattern"
+                //"--fresnel_lens_pattern"
             ]
         }
     ]

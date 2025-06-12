@@ -16,8 +16,8 @@ def main():
     parser.add_argument("--mask", type=str, default="", help="Optional: path to phase mask tiff (default: zeros)")
     parser.add_argument("--axicon", action="store_true", help="Use axicon phase mask (Bessel beam)")
     parser.add_argument("--output_dir", type=str, default="beam_profile_test", help="Output directory")
-    parser.add_argument("--z_min", type=int, default=0)
-    parser.add_argument("--z_max", type=int, default=1000)
+    parser.add_argument("--z_min", type=int, default=-100)
+    parser.add_argument("--z_max", type=int, default=100)
     parser.add_argument("--z_step", type=int, default=1)
     parser.add_argument("--y_min", type=int, default=-50)
     parser.add_argument("--y_max", type=int, default=50)
@@ -35,7 +35,7 @@ def main():
     wavelength_nm = config['wavelength'] * 1e9 if config['wavelength'] < 1e-6 else config['wavelength']  # wavelength in nm
     beam_fwhm = config['laser_beam_FWHC']
     bessel_angle = config['bessel_cone_angle_degrees']
-    config['device'] = 'cpu' 
+    config['device'] = 'cpu' if torch.cuda.is_available() else 'cpu'
     device = config['device']
 
     # Generate or load phase mask
@@ -75,76 +75,76 @@ def main():
 
     mask_tensor = torch.from_numpy(mask_np).type(torch.FloatTensor).to(device)
 
-    config['device'] = 'cpu'  # Use CPU for testing
     config['Nimgs'] = 1
     lens_approach = config['lens_approach']
     phys_layer = PhysicalLayer(config)
     phys_layer.eval()
-    if lens_approach == 'fourier' or lens_approach == 'against_lens':
-        output_layer = phys_layer.a(mask_tensor)
-    elif lens_approach == 'fourier_lens' or lens_approach == 'convolution':
-        output_layer = phys_layer.fourier_lens(mask_tensor)
-    elif lens_approach == 'lensless':
-        output_layer = phys_layer.lensless(mask_tensor)
-    elif lens_approach == '4f':
-        output_layer = phys_layer.fourf(mask_tensor)
-    else:
-        raise ValueError('lens approach not supported')
-    
-    # squeeze the output layer to remove singleton dimensions
-    output_layer = output_layer.squeeze() 
-    #output_layer = output_layer.detach().cpu().numpy()
-    #output_layer = np.squeeze(output_layer)
+    with torch.no_grad():
+        if lens_approach == 'fourier' or lens_approach == 'against_lens':
+            output_layer = phys_layer.a(mask_tensor)
+        elif lens_approach == 'fourier_lens' or lens_approach == 'convolution':
+            output_layer = phys_layer.fourier_lens(mask_tensor)
+        elif lens_approach == 'lensless':
+            output_layer = phys_layer.lensless(mask_tensor)
+        elif lens_approach == '4f':
+            output_layer = phys_layer.fourf(mask_tensor)
+        else:
+            raise ValueError('lens approach not supported')
+        
+        # squeeze the output layer to remove singleton dimensions
+        output_layer = output_layer.squeeze() 
+        #output_layer = output_layer.detach().cpu().numpy()
+        #output_layer = np.squeeze(output_layer)
 
-    print("Generating beam profile...") 
-    output_beam_sections_dir = os.path.join(output_subdir, "beam_sections")
-    os.makedirs(output_beam_sections_dir, exist_ok=True)
-    beam_profile = phys_layer.generate_beam_cross_section(
-        output_layer, output_beam_sections_dir, (args.z_min, args.z_max, args.z_step), (args.y_min, args.y_max)
-    )
+        print("Generating beam profile...") 
+        output_beam_sections_dir = os.path.join(output_subdir, "beam_sections")
+        os.makedirs(output_beam_sections_dir, exist_ok=True)
+        beam_profile = phys_layer.generate_beam_cross_section(
+            output_layer, output_beam_sections_dir, (args.z_min, args.z_max, args.z_step), (args.y_min, args.y_max), asm = False
+        )
 
-    # Save as TIFF (like mask_inference)
-    tiff_path = os.path.join(output_subdir, "beam_profile.tiff")
-    skimage.io.imsave(tiff_path, (beam_profile))
-    print(f"Saved beam profile as TIFF to {tiff_path}")
+        # Save as TIFF (like mask_inference)
+        tiff_path = os.path.join(output_subdir, "beam_profile.tiff")
+        skimage.io.imsave(tiff_path, (beam_profile))
+        print(f"Saved beam profile as TIFF to {tiff_path}")
 
-    # Save as PNG for easy viewing
-    png_path = os.path.join(output_subdir, "beam_profile.png")
-    plt.figure(figsize=(8, 6))
-    plt.imshow(phys_layer.normalize_to_uint16(beam_profile), cmap='hot', aspect='auto')
-    plt.colorbar()
-    # Set axis labels and ticks in mm
-    z_range = np.arange(args.z_min, args.z_max, args.z_step) / 1000  # mm
-    y_range = np.arange(args.y_min, args.y_max + 1) / 1000  # mm
+        # Save as PNG for easy viewing
+        png_path = os.path.join(output_subdir, "beam_profile.png")
+        plt.figure(figsize=(5, 10))
+        plt.imshow(phys_layer.normalize_to_uint16(beam_profile), cmap='hot', aspect='equal')
+        plt.colorbar()
+        # Set axis labels and ticks in mm
+        z_range = np.arange(args.z_min, args.z_max, args.z_step) / 1000  # mm
+        y_range = np.arange(args.y_min, args.y_max + 1) / 1000  # mm
 
-    plt.title(
-        f"Beam Profile\n"
-        f"z: {args.z_min/1000}mm-{args.z_max/1000}mm, step={args.z_step//1000}mm,"
-        f"axicon angle={bessel_angle}°, "
-        f"lens approach={lens_approach}, \n"
-        f"focal_length={1000*config.get('focal_length', 'N/A')}mm, "
-        f"focal_length_2={1000*config.get('focal_length_2', 'N/A')}mm"
-    )
-    plt.xlabel("y (mm)")
-    plt.ylabel("z (mm)")
-    plt.yticks(
-        ticks=np.linspace(0, len(z_range)-1, num=5),
-        labels=[f"{z_range[int(i)]:.2f}" for i in np.linspace(0, len(z_range)-1, num=5)]
-    )
-    plt.xticks(
-        ticks=np.linspace(0, len(y_range)-1, num=5),
-        labels=[f"{y_range[int(i)]:.2f}" for i in np.linspace(0, len(y_range)-1, num=5)]
-    )
-    plt.tight_layout()
-    plt.savefig(png_path)
-    print(f"Saved beam profile as PNG to {png_path}")
-    
-    # save the config used for this test
-    config_output_path = os.path.join(output_subdir, "config.yaml")
-    with open(config_output_path, "w") as f:
-        for key, value in config.items():
-            f.write(f"{key}: {value}\n")
-    print(f"Saved configuration to {config_output_path}")
+        plt.title(
+            f"Beam Profile\n"
+            f"z: {args.z_min/1000}mm-{args.z_max/1000}mm, step={args.z_step//1000}mm,"
+            f"axicon angle={bessel_angle}°, "
+            f"lens approach={lens_approach}, \n"
+            f"focal_length={1000*config.get('focal_length', 'N/A')}mm, "
+            f"focal_length_2={1000*config.get('focal_length_2', 'N/A')}mm"
+        )
+        plt.xlabel("y (mm)")
+        plt.ylabel("z (mm)")
+        plt.yticks(
+            ticks=np.linspace(0, len(z_range)-1, num=5),
+            labels=[f"{z_range[int(i)]:.2f}" for i in np.linspace(0, len(z_range)-1, num=5)]
+        )
+        plt.xticks(
+            ticks=np.linspace(0, len(y_range)-1, num=5),
+            labels=[f"{y_range[int(i)]:.2f}" for i in np.linspace(0, len(y_range)-1, num=5)]
+        )
+        plt.tight_layout()
+        plt.savefig(png_path)
+        print(f"Saved beam profile as PNG to {png_path}")
+        
+        # save the config used for this test
+        config_output_path = os.path.join(output_subdir, "config.yaml")
+        with open(config_output_path, "w") as f:
+            for key, value in config.items():
+                f.write(f"{key}: {value}\n")
+        print(f"Saved configuration to {config_output_path}")
 
 if __name__ == "__main__":
     main()
