@@ -13,7 +13,7 @@ def FWHM(path):
     for index in range(len(x)):
         img = skimage.io.imread(path+str(x[index]) + '.tiff')
         
-        intensity_values = sum(imgastype(np.uint32))
+        intensity_values = sum(img.astype(np.uint32))
         #print(intensity_values)
         #print(x[index])
         ans.append(intensity_values)

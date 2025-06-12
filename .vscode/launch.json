@@ -97,12 +97,13 @@
             "name": "Python: Test Beam Profile (Axicon)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/test_beam_profile.py",
+            "program": "${workspaceFolder}/beam_profiler.py",
             "console": "integratedTerminal",
             "args": [
                 "--config", "config.yaml",
-                "--axicon",
-                "--output_dir", "beam_axicon"
+                //"--axicon",
+                "--output_dir", "beam_axicon",
+                "--fresnel_lens_pattern"
             ]
         }
     ]

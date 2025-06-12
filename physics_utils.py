@@ -29,39 +29,7 @@ def gaussian2D_unnormalized(shape=(7, 7), sigma=1.0):
     hV = torch.from_numpy(h).type(torch.FloatTensor)
     return hV
 
-def circular_aperature(arr,device):
-    """
-    Sets elements outside a centered circle to zero for a PyTorch tensor.
 
-    Args:
-    arr: A 2D square PyTorch tensor.
-
-    Returns:
-    A new PyTorch tensor with elements outside the circle set to zero.
-    """
-    h = arr.shape[0]
-    if arr.shape[1] != h:
-        raise ValueError("Input tensor must be square.")
-
-    center_x = (h - 1) / 2
-    center_y = (h - 1) / 2
-    radius = h / 2
-
-    # Create a meshgrid of coordinates
-    x = torch.arange(h)
-    y = torch.arange(h)
-    xx, yy = torch.meshgrid(x, y, indexing='ij')  # Use indexing='ij' for correct meshgrid
-
-    # Calculate the distance from each point to the center
-    distances = torch.sqrt((xx - center_x)**2 + (yy - center_y)**2)
-
-    # Create a mask where True indicates points inside the circle
-    mask = distances <= radius
-
-    # Apply the mask to the array
-    result = arr * mask.to(device)
-
-    return result
 
 def NextPowerOfTwo(number):
     # Returns next power of two following 'number'
@@ -337,6 +305,40 @@ class PhysicalLayer(nn.Module):
         self.noise = NoiseLayer(device, self.Nimgs, self.conv3d)
         self.norm01 = Normalize01()
 
+    def circular_aperature(self, arr):
+        """
+        Sets elements outside a centered circle to zero for a PyTorch tensor.
+
+        Args:
+        arr: A 2D square PyTorch tensor.
+
+        Returns:
+        A new PyTorch tensor with elements outside the circle set to zero.
+        """
+        h = arr.shape[0]
+        if arr.shape[1] != h:
+            raise ValueError("Input tensor must be square.")
+
+        center_x = (h - 1) / 2
+        center_y = (h - 1) / 2
+        radius = h / 2
+
+        # Create a meshgrid of coordinates
+        x = torch.arange(h)
+        y = torch.arange(h)
+        xx, yy = torch.meshgrid(x, y, indexing='ij')  # Use indexing='ij' for correct meshgrid
+
+        # Calculate the distance from each point to the center
+        distances = torch.sqrt((xx - center_x)**2 + (yy - center_y)**2)
+
+        # Create a mask where True indicates points inside the circle
+        mask = distances <= radius
+
+        # Apply the mask to the array
+        result = arr * mask.to(self.device)
+
+        return result
+
     def against_lens(self, mask_param):
         Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
         Ta = Ta[None, None, :] 
@@ -354,13 +356,10 @@ class PhysicalLayer(nn.Module):
         Ta = Ta[None, None, :]
         Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
         Uo_pad = F.pad(Uo, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-        #Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad)) # fourier spectrum of the light directly after the SLM
-        #Fl = Fo * self.H # propogated through free space from the SLM to a plane directly incident on the lens
         Ul = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1)) # light directly infront of the lens
         Ul_cropped = Ul[:, :, -self.N:, -self.N:]
         if self.aperature == True:
-            Ul_cropped = circular_aperature(Ul_cropped,self.device)
-        #Ul_cropped = Ul[-self.N:, -self.N:]
+            Ul_cropped = self.circular_aperature(Ul_cropped,self.device)
         Ul_prime = Ul_cropped * self.B1 # light after the lens
         Ul_prime_pad = F.pad(Ul_prime, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
         Uf = torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1)) # light at the back focal plane of the lens   
@@ -371,18 +370,6 @@ class PhysicalLayer(nn.Module):
         Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
         Ta = Ta[None, None, :]
         Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
-        """ Uo_pad = F.pad(Uo, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-        #Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad)) # fourier spectrum of the light directly after the SLM
-        #Fl = Fo * self.H # propogated through free space from the SLM to a plane directly incident on the lens
-        Ul = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1)) # light directly infront of the lens
-        Ul_cropped = Ul[:, :, -self.N:, -self.N:]
-        if self.aperature == True:
-            Ul_cropped = circular_aperature(Ul_cropped,self.device)
-        #Ul_cropped = Ul[-self.N:, -self.N:]
-        Ul_prime = Ul_cropped * self.B1 # light after the lens
-        Ul_prime_pad = F.pad(Ul_prime, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-        Uf = torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1)) # light at the back focal plane of the lens   
-        output_layer = Uf[:, :, -self.N:, -self.N:] """
         output_layer = Uo
         return output_layer
 
@@ -424,13 +411,13 @@ class PhysicalLayer(nn.Module):
         output_layer = U_output_4f[:, :, -self.N:, -self.N:]
         return output_layer
 
-    def angular_spectrum_prop(self, output_layer, x):
+    def angular_spectrum_propagation(self, output_layer, z):
         """
-        Angular spectrum propagation for a given output_layer and x value.
+        Angular spectrum propagation for a given output_layer and z pixel distance.
 
         Args:
             output_layer (torch.Tensor): The complex field to propagate.
-            x (float or int): The x value for propagation.
+            z (float or int): The z pixel distance for propagation.
 
         Returns:
             torch.Tensor: The propagated intensity (real-valued).
@@ -438,12 +425,75 @@ class PhysicalLayer(nn.Module):
         U1 = torch.fft.ifft2(
             torch.fft.ifftshift(
                 torch.fft.fftshift(torch.fft.fft2(output_layer)) 
-                * torch.exp(1j * self.k * self.gamma_cust * x * self.px)
+                * torch.exp(1j * self.k * self.gamma_cust * z * self.px)
             )
         )
         U1 = torch.real(U1 * torch.conj(U1))
         return U1
     
+    @staticmethod
+    def normalize_to_uint16(img: np.ndarray) -> np.ndarray:
+        """
+        Normalizes a numpy array to the uint16 range [0, 65535].
+        
+        Args:
+            img (np.ndarray): The input image array.
+            
+        Returns:
+            np.ndarray: The normalized image as a uint16 array.
+        """
+        # if tesnor convert to numpy
+        if isinstance(img, torch.Tensor):
+            img = img.cpu().numpy()
+        # Ensure the image is in float format for normalization
+        img_float = img.astype(np.float32)
+        img_float -= img_float.min()
+        max_val = img_float.max()
+        if max_val > 0:
+            img_float /= max_val
+        return (img_float * 65535).astype(np.uint16)
+    
+    def generate_beam_cross_section(self, initial_field: np.ndarray, output_folder: str, z_range_px: tuple, y_slice_px: tuple) -> np.ndarray:
+        """
+        Generates a 2D cross-section of the beam by stacking 1D slices along the z-axis.
+        
+        Args:
+            initial_field (np.ndarray): The complex field at z=0.
+            output_folder (str): Folder to save 2D intensity profiles at each z-step.
+            z_range_px (tuple): (min, max) propagation distance in pixels.
+            y_slice_px (tuple): (min, max) slice of the y-axis in pixels.
+            
+        Returns:
+            np.ndarray: A 2D array representing the beam's cross-section (ZY plane).
+        """
+        os.makedirs(output_folder, exist_ok=True)
+        z_min_px, z_max_px, z_step = z_range_px
+        y_min_px, y_max_px = y_slice_px
+        
+        num_z_steps = (z_max_px - z_min_px)// z_step
+        # Initialize the cross-section profile array accounting for step size
+
+        cross_section_profile = np.zeros((num_z_steps, y_max_px - y_min_px))
+
+        print(f"Generating beam cross-section for {num_z_steps} slices...")
+        for i, z_px in enumerate(range(z_min_px, z_max_px, z_step)):
+            
+            # Propagate field and get intensity
+            intensity_at_z = self.angular_spectrum_propagation(initial_field, z_px)
+
+            # Extract the central 1D slice along the y-axis
+            center_row_idx = intensity_at_z.shape[0] // 2
+            center_col_idx = intensity_at_z.shape[1] // 2
+            cross_section_profile[i,:] = intensity_at_z[center_row_idx, center_col_idx + y_min_px : center_col_idx + y_max_px]
+
+            # Save the full 2D intensity profile at the current z-step
+            save_path = os.path.join(output_folder, f'intensity_z_{i:04d}.tiff')
+            skimage.io.imsave(save_path, self.normalize_to_uint16(intensity_at_z))
+            
+        print("Cross-section generation complete.")
+        return self.normalize_to_uint16(cross_section_profile)
+
+
     def forward(self, mask_param, xyz):
 
         Nbatch, Nemitters = xyz.shape[0], xyz.shape[1]
@@ -571,7 +621,7 @@ class PhysicalLayer(nn.Module):
                     z = xyz[i, j, 2].type(torch.LongTensor)
 
                     x_ori = xyz[i, j, 0].type(torch.LongTensor)
-                    U1 = self.angular_spectrum_prop(output_layer, x) # angular spectrum propagation
+                    U1 = self.angular_spectrum_propagation(output_layer, x) # angular spectrum propagation
 
                     # Here we assume that the beam is being dithered up and down
                     intensity = torch.sum(U1[0, 0, :, int((self.N//2-1) + z)]) # if px is 1e-6 why multiply by 1e6?

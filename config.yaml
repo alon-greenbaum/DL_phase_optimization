@@ -10,7 +10,7 @@ particle_spatial_range_z: [-10, 11, 1]  # um default range(-10,11,1)
 # Define the parameters
 N: 500  # grid size
 px: 1.0e-6  # pixel size [m]
-focal_length: 180.0e-3  # [m] equivalent to 2 mm away from the lens
+focal_length: 500.0e-6  # [m] equivalent to 2 mm away from the lens
 wavelength: 0.561e-6  # [m]
 refractive_index: 1.0  # We assume propagation is in air
 psf_width_pixels: 101  # How big will be the psf image
@@ -47,7 +47,7 @@ power_2: 1000 # pad to this power for fourier transform
 bfp_dir: "back_focal_plane"
 dropout: 0.5
 conv3d: False
-aperature: True
+aperature: False
 #z_img_mode: 'edgecenter'
 #z_spacing: 2
 z_depth_list: [0] # z slices input into the cnn
@@ -62,5 +62,5 @@ weights: [1.0,1.0,1.5] # cross entropy loss weights (must be floats)
 # try focal loss
 # changing input z slices
 initial_phase_mask: "bessel"
-bessel_cone_angle_degrees: 0.1
-focal_length_2: 75.0e-3  # [m] focal length of the second lens
+bessel_cone_angle_degrees: 3
+focal_length_2: 2.0e-3  # [m] focal length of the second lens

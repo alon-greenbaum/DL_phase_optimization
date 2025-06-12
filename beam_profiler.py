@@ -6,7 +6,7 @@ import skimage.io
 import matplotlib.pyplot as plt
 from datetime import datetime
 from data_utils import load_config
-from beam_profile_gen import BeamProfiler
+#from beam_profile_gen import BeamProfiler
 from bessel import generate_axicon_phase_mask
 from physics_utils import PhysicalLayer
 
@@ -17,9 +17,11 @@ def main():
     parser.add_argument("--axicon", action="store_true", help="Use axicon phase mask (Bessel beam)")
     parser.add_argument("--output_dir", type=str, default="beam_profile_test", help="Output directory")
     parser.add_argument("--z_min", type=int, default=0)
-    parser.add_argument("--z_max", type=int, default=200)
-    parser.add_argument("--y_min", type=int, default=-100)
-    parser.add_argument("--y_max", type=int, default=100)
+    parser.add_argument("--z_max", type=int, default=1000)
+    parser.add_argument("--z_step", type=int, default=1)
+    parser.add_argument("--y_min", type=int, default=-50)
+    parser.add_argument("--y_max", type=int, default=50)
+    parser.add_argument("--fresnel_lens_pattern", action="store_true", help="Use Fresnel lens phase mask")
     args = parser.parse_args()
 
     # Create a timestamped subfolder output dir
@@ -45,11 +47,21 @@ def main():
             wavelength_nm=wavelength_nm,
             bessel_cone_angle_degrees=bessel_angle
         )
-    elif args.mask and os.path.exists(args.mask):
-        mask_np = skimage.io.imread(args.mask)
+    elif args.fresnel_lens_pattern:
+        print(f"Generating a Fresnel lens phase mask: {N}x{N}, {px_um}um, {wavelength_nm}nm, focal_length={config['focal_length']}m")
+        # Generate Fresnel lens phase mask
+        yy, xx = np.meshgrid(np.arange(N) - N // 2, np.arange(N) - N // 2)
+        r = np.sqrt(xx**2 + yy**2) * px_um * 1e-6  # radius in meters
+        fresnel_phase = (-np.pi / (wavelength_nm * 1e-9 * config['focal_length'])) * (r ** 2)
+        mask_np = np.mod(fresnel_phase, 2 * np.pi).astype(np.float32)
+    elif args.mask:
+        print(f"Loading phase mask from {args.mask}")
+        mask_np = skimage.io.imread(args.mask).astype(np.float32)
+        if mask_np.shape != (N, N):
+            raise ValueError(f"Loaded mask shape {mask_np.shape} does not match expected {(N, N)}")
     else:
         mask_np = np.zeros((N, N), dtype=np.float32)
-        
+
     # save the mask as png figure for easy viewing
     mask_png_path = os.path.join(output_subdir, "mask.png")
     plt.figure(figsize=(8, 6))
@@ -79,28 +91,50 @@ def main():
     else:
         raise ValueError('lens approach not supported')
     
-    output_layer = output_layer.detach().cpu().numpy()
-    output_layer = np.squeeze(output_layer)
+    # squeeze the output layer to remove singleton dimensions
+    output_layer = output_layer.squeeze() 
+    #output_layer = output_layer.detach().cpu().numpy()
+    #output_layer = np.squeeze(output_layer)
 
     print("Generating beam profile...") 
     output_beam_sections_dir = os.path.join(output_subdir, "beam_sections")
     os.makedirs(output_beam_sections_dir, exist_ok=True)
-    beam_profiler = BeamProfiler(config)
-    beam_profile = beam_profiler.generate_beam_cross_section(
-        output_layer, output_beam_sections_dir, (args.z_min, args.z_max), (args.y_min, args.y_max)
+    beam_profile = phys_layer.generate_beam_cross_section(
+        output_layer, output_beam_sections_dir, (args.z_min, args.z_max, args.z_step), (args.y_min, args.y_max)
     )
 
     # Save as TIFF (like mask_inference)
     tiff_path = os.path.join(output_subdir, "beam_profile.tiff")
-    skimage.io.imsave(tiff_path, (beam_profile).astype(np.uint16))
+    skimage.io.imsave(tiff_path, (beam_profile))
     print(f"Saved beam profile as TIFF to {tiff_path}")
 
     # Save as PNG for easy viewing
     png_path = os.path.join(output_subdir, "beam_profile.png")
     plt.figure(figsize=(8, 6))
-    plt.imshow(beam_profile, cmap='hot', aspect='auto')
+    plt.imshow(phys_layer.normalize_to_uint16(beam_profile), cmap='hot', aspect='auto')
     plt.colorbar()
-    plt.title("Beam Profile")
+    # Set axis labels and ticks in mm
+    z_range = np.arange(args.z_min, args.z_max, args.z_step) / 1000  # mm
+    y_range = np.arange(args.y_min, args.y_max + 1) / 1000  # mm
+
+    plt.title(
+        f"Beam Profile\n"
+        f"z: {args.z_min/1000}mm-{args.z_max/1000}mm, step={args.z_step//1000}mm,"
+        f"axicon angle={bessel_angle}°, "
+        f"lens approach={lens_approach}, \n"
+        f"focal_length={1000*config.get('focal_length', 'N/A')}mm, "
+        f"focal_length_2={1000*config.get('focal_length_2', 'N/A')}mm"
+    )
+    plt.xlabel("y (mm)")
+    plt.ylabel("z (mm)")
+    plt.yticks(
+        ticks=np.linspace(0, len(z_range)-1, num=5),
+        labels=[f"{z_range[int(i)]:.2f}" for i in np.linspace(0, len(z_range)-1, num=5)]
+    )
+    plt.xticks(
+        ticks=np.linspace(0, len(y_range)-1, num=5),
+        labels=[f"{y_range[int(i)]:.2f}" for i in np.linspace(0, len(y_range)-1, num=5)]
+    )
     plt.tight_layout()
     plt.savefig(png_path)
     print(f"Saved beam profile as PNG to {png_path}")
