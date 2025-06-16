@@ -10,7 +10,7 @@ particle_spatial_range_z: [-10, 11, 1]  # um default range(-10,11,1)
 # Define the parameters
 N: 500  # grid size
 px: 1.0e-6  # pixel size [m]
-focal_length: 500.0e-6  # [m] equivalent to 2 mm away from the lens
+focal_length: 500.0e-5  # [m] equivalent to 2 mm away from the lens
 wavelength: 0.561e-6  # [m]
 refractive_index: 1.0  # We assume propagation is in air
 psf_width_pixels: 101  # How big will be the psf image

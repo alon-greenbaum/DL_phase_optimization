@@ -442,7 +442,7 @@ class PhysicalLayer(nn.Module):
         Returns:
             torch.Tensor: The propagated intensity (real-valued).
         """
-        Q = np.exp(1j * (np.pi * self.refractive_index / (self.wavelength * z)) * (
+        Q = np.exp(1j * self.k / (2 * z * self.px) * (
                     np.square(self.XX) + np.square(self.YY)))  # Fresnel diffraction equation
         Q = torch.from_numpy(Q).type(torch.cfloat).to(self.device)
 
@@ -470,7 +470,7 @@ class PhysicalLayer(nn.Module):
         if isinstance(img, torch.Tensor):
             img = img.cpu().numpy()
         # Ensure the image is in float format for normalization
-        img_float = img.astype(np.float32)
+        img_float = img.astype(np.float64)
         img_float -= img_float.min()
         max_val = img_float.max()
         if max_val > 0:
@@ -510,7 +510,7 @@ class PhysicalLayer(nn.Module):
             
         for i, z_px in enumerate(range(z_min_px, z_max_px, z_step)):
             if z_px == 0:
-                z_px = 1.0e-6 # avoid zero division
+                z_px = 1.0e-3 # avoid zero division
         
             # Propagate field and get intensity
             if asm:
@@ -520,12 +520,12 @@ class PhysicalLayer(nn.Module):
                 intensity_at_z[i] = self.fresnel_propagation(initial_field, z_px)
 
 
-            # Extract the central 1D slice alosg the y-axis
-            center_row_idx = intensity_at_z.shape[0] // 2
-            center_col_idx = intensity_at_z.shape[1] // 2
+            # Extract the central 1D slice along the y-axis
+            center_row_idx = intensity_at_z.shape[1] // 2
+            center_col_idx = intensity_at_z.shape[2] // 2
             cross_section_profile[i,:] = intensity_at_z[i, center_row_idx, center_col_idx + y_min_px : center_col_idx + y_max_px]
         
-        #normalize intensity_at_z to uint16
+        # normalize intensity_at_z to uint16
         intensity_at_z = self.normalize_to_uint16(intensity_at_z)
         for i, z_px in enumerate(range(z_min_px, z_max_px, z_step)):
             # Save the full 2D intensity profile at the current z-step
@@ -533,8 +533,11 @@ class PhysicalLayer(nn.Module):
             #print(f'{i} {z_px}')
             skimage.io.imsave(save_path, intensity_at_z[i])
             
+        # save cross_section_profile as tiff in 32 bit float format
+        #cross_section_save_path = os.path.join(output_folder, 'cross_section_profile.tiff')
+        #skimage.io.imsave(cross_section_save_path, cross_section_profile.astype(np.float32))
         print("Cross-section generation complete.")
-        return self.normalize_to_uint16(cross_section_profile)
+        return cross_section_profile
 
 
     def forward(self, mask_param, xyz):
