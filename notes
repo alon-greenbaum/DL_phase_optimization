@@ -1,12 +1,12 @@
 6/10/25
 propogate the axicon in free space and see what it looks like
-propogate the ring that forms after the lens and see if it interefers to form the axicon
+propogate the ring that forms after the lens and see if it interferes to form a bessel
 
 6/12/25
-now measure the fwhm at the focal point of the slm with a fresnel lens and then use an empty gaussian and calculate the fwhm of the gaussian after a lens. Th
+now measure the fwhm at the focal point of the slm with a fresnel lens and then use an empty gaussian and calculate the fwhm of the gaussian after a lens.
 
 Also be sure that the fwhm is changing as a function of the gaussian beam equation
 
 There is a trade off between the pixel size and the field of view
 
-now check whether the fresnel convolution approach increases the pixel size in the output planes
+Also check whether the fresnel convolution approach increases the pixel size in the output planes

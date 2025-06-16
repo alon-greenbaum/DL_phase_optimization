@@ -42,7 +42,7 @@ ratio_input_output_image_size: 1  # default with Unet 1, with ResNet 4
 z_range_cost_function: [0,0] # default 1
 use_unet: true
 num_classes: 1
-lens_approach: "fourier_lens" # "fourier" or "fresnel"
+lens_approach: "lensless" # "fourier" or "fresnel"
 power_2: 1000 # pad to this power for fourier transform
 bfp_dir: "back_focal_plane"
 dropout: 0.5
@@ -62,5 +62,6 @@ weights: [1.0,1.0,1.5] # cross entropy loss weights (must be floats)
 # try focal loss
 # changing input z slices
 initial_phase_mask: "bessel"
-bessel_cone_angle_degrees: 3
+bessel_cone_angle_degrees: 0
 focal_length_2: 500.0e-6  # [m] focal length of the second lens
+angular_spectrum_method: False

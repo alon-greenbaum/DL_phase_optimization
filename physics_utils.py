@@ -498,26 +498,40 @@ class PhysicalLayer(nn.Module):
         # Initialize the cross-section profile array accounting for step size
 
         cross_section_profile = np.zeros((num_z_steps, y_max_px - y_min_px))
+        # init empty tensor to hold z min to z max with z step of width and height depednig on intial_field size'
+        height, width = initial_field.shape
+        intensity_at_z = torch.zeros((num_z_steps, height, width))
 
         print(f"Generating beam cross-section for {num_z_steps} slices...")
+        if asm:
+            print("using angular spectrum")
+        else:
+            print("using fresnel approximation")
+            
         for i, z_px in enumerate(range(z_min_px, z_max_px, z_step)):
             if z_px == 0:
-                intensity_at_z = initial_field
-            else:
-                # Propagate field and get intensity
-                if asm:
-                    intensity_at_z = self.angular_spectrum_propagation(initial_field, z_px)
-                else:
-                    intensity_at_z = self.fresnel_propagation(initial_field, z_px)
+                z_px = 1.0e-6 # avoid zero division
+        
+            # Propagate field and get intensity
+            if asm:
+                intensity_at_z[i] = self.angular_spectrum_propagation(initial_field, z_px)
 
-            # Extract the central 1D slice along the y-axis
+            else:
+                intensity_at_z[i] = self.fresnel_propagation(initial_field, z_px)
+
+
+            # Extract the central 1D slice alosg the y-axis
             center_row_idx = intensity_at_z.shape[0] // 2
             center_col_idx = intensity_at_z.shape[1] // 2
-            cross_section_profile[i,:] = intensity_at_z[center_row_idx, center_col_idx + y_min_px : center_col_idx + y_max_px]
-
+            cross_section_profile[i,:] = intensity_at_z[i, center_row_idx, center_col_idx + y_min_px : center_col_idx + y_max_px]
+        
+        #normalize intensity_at_z to uint16
+        intensity_at_z = self.normalize_to_uint16(intensity_at_z)
+        for i, z_px in enumerate(range(z_min_px, z_max_px, z_step)):
             # Save the full 2D intensity profile at the current z-step
             save_path = os.path.join(output_folder, f'intensity_z_{i:04d}.tiff')
-            skimage.io.imsave(save_path, self.normalize_to_uint16(intensity_at_z))
+            #print(f'{i} {z_px}')
+            skimage.io.imsave(save_path, intensity_at_z[i])
             
         print("Cross-section generation complete.")
         return self.normalize_to_uint16(cross_section_profile)

@@ -14,7 +14,7 @@ def main():
     parser = argparse.ArgumentParser(description="Test light propagation with optional axicon phase mask and save beam profile.")
     parser.add_argument("--config", type=str, required=True, help="Path to config.yaml")
     parser.add_argument("--mask", type=str, default="", help="Optional: path to phase mask tiff (default: zeros)")
-    parser.add_argument("--axicon", action="store_true", help="Use axicon phase mask (Bessel beam)")
+    #parser.add_argument("--axicon", action="store_true", help="Use axicon phase mask (Bessel beam)")
     parser.add_argument("--output_dir", type=str, default="beam_profile_test", help="Output directory")
     parser.add_argument("--z_min", type=int, default=-100)
     parser.add_argument("--z_max", type=int, default=100)
@@ -37,9 +37,10 @@ def main():
     bessel_angle = config['bessel_cone_angle_degrees']
     config['device'] = 'cpu' if torch.cuda.is_available() else 'cpu'
     device = config['device']
+    asm = config.get('angular_spectrum_method', True)
 
     # Generate or load phase mask
-    if args.axicon:
+    if bessel_angle > 0:
         print(f"Generating axicon phase mask: {N}x{N}, {px_um}um, {wavelength_nm}nm, angle={bessel_angle}deg")
         mask_np = generate_axicon_phase_mask(
             mask_resolution_pixels=(N, N),
@@ -100,7 +101,7 @@ def main():
         output_beam_sections_dir = os.path.join(output_subdir, "beam_sections")
         os.makedirs(output_beam_sections_dir, exist_ok=True)
         beam_profile = phys_layer.generate_beam_cross_section(
-            output_layer, output_beam_sections_dir, (args.z_min, args.z_max, args.z_step), (args.y_min, args.y_max), asm = False
+            output_layer, output_beam_sections_dir, (args.z_min, args.z_max, args.z_step), (args.y_min, args.y_max), asm = asm
         )
 
         # Save as TIFF (like mask_inference)
@@ -119,11 +120,13 @@ def main():
 
         plt.title(
             f"Beam Profile\n"
-            f"z: {args.z_min/1000}mm-{args.z_max/1000}mm, step={args.z_step//1000}mm,"
-            f"axicon angle={bessel_angle}°, "
-            f"lens approach={lens_approach}, \n"
-            f"focal_length={1000*config.get('focal_length', 'N/A')}mm, "
-            f"focal_length_2={1000*config.get('focal_length_2', 'N/A')}mm"
+            f"z: {args.z_min/1000}mm-{args.z_max/1000}mm, step={args.z_step//1000}mm,\n"
+            f"axicon angle={bessel_angle}°, \n"
+            f"lens={lens_approach}, \n"
+            f"focal_length_1={1000*config.get('focal_length', 'N/A')}mm, \n"
+            f"focal_length_2={1000*config.get('focal_length_2', 'N/A')}mm \n"
+            f"{'Fresnel lens' if args.fresnel_lens_pattern else ''}"
+            f"{'ASM prop' if asm else 'Fresnel prop'}"
         )
         plt.xlabel("y (mm)")
         plt.ylabel("z (mm)")
