@@ -101,7 +101,6 @@
             "console": "integratedTerminal",
             "args": [
                 "--config", "config.yaml",
-                //"--axicon",
                 "--output_dir", "beam_axicon",
                 //"--fresnel_lens_pattern"
             ]

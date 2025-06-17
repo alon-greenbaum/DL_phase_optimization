@@ -14,13 +14,7 @@ def main():
     parser = argparse.ArgumentParser(description="Test light propagation with optional axicon phase mask and save beam profile.")
     parser.add_argument("--config", type=str, required=True, help="Path to config.yaml")
     parser.add_argument("--mask", type=str, default="", help="Optional: path to phase mask tiff (default: zeros)")
-    #parser.add_argument("--axicon", action="store_true", help="Use axicon phase mask (Bessel beam)")
     parser.add_argument("--output_dir", type=str, default="beam_profile_test", help="Output directory")
-    parser.add_argument("--z_min", type=int, default=-10000)
-    parser.add_argument("--z_max", type=int, default=10000)
-    parser.add_argument("--z_step", type=int, default=50)
-    parser.add_argument("--y_min", type=int, default=-100)
-    parser.add_argument("--y_max", type=int, default=100)
     parser.add_argument("--fresnel_lens_pattern", action="store_true", help="Use Fresnel lens phase mask")
     args = parser.parse_args()
 
@@ -32,16 +26,42 @@ def main():
     config = load_config(args.config)
     N = config['N']
     px = config['px']  # pixel size in meters
-    px_mm = config['px'] * 1e3 if config['px'] < 1e-3 else config['px']  # px in mm
-    px_um = config['px'] * 1e6 if config['px'] < 1e-3 else config['px']  # px in um
-    wavelength_nm = config['wavelength'] * 1e9 if config['wavelength'] < 1e-6 else config['wavelength']  # wavelength in nm
+    px_mm = config['px'] * 1e3 # px in mm
+    px_um = config['px'] * 1e6 # px in um
+    wavelength_nm = config['wavelength'] * 1e9 # wavelength in nm
     beam_fwhm = config['laser_beam_FWHC']
     bessel_angle = config['bessel_cone_angle_degrees']
-    config['device'] = 'cpu' if torch.cuda.is_available() else 'cpu'
+    config['device'] = 'cuda' if torch.cuda.is_available() else 'cpu'
     device = config['device']
     asm = config.get('angular_spectrum_method', True)
 
+    # Get z_min, z_max, y_min, y_max, and num_z_steps from config
+    z_min_mm = config.get('z_min_mm', -10.0) # Default to -10 mm if not in config
+    z_max_mm = config.get('z_max_mm', 10.0)  # Default to 10 mm if not in config
+    y_min_mm = config.get('y_min_mm', -1.0)  # Default to -1 mm if not in config
+    y_max_mm = config.get('y_max_mm', 1.0)   # Default to 1 mm if not in config
+    num_z_steps = config.get('num_z_steps', 200) # Default to 200 steps if not in config
+
+    # Convert mm values to pixel values for internal calculations
+    z_min_pixels = int(z_min_mm / px_mm)
+    z_max_pixels = int(z_max_mm / px_mm)
+    y_min_pixels = int(y_min_mm / px_mm)
+    y_max_pixels = int(y_max_mm / px_mm)
+
+    # Calculate z_step_pixels
+    if num_z_steps > 1:
+        z_step_pixels = int((z_max_pixels - z_min_pixels) / (num_z_steps - 1))
+    else:
+        z_step_pixels = 1 # Handle case of single step to avoid division by zero
+
+    # Ensure z_step_pixels is at least 1
+    z_step_pixels = max(1, z_step_pixels)
+
+
     # Generate or load phase mask
+    # assert that either bessel_angle > 0 or args.fresnel_lens_pattern is True or args.mask is provided
+    if int(bessel_angle > 0) + int(args.fresnel_lens_pattern) + int(bool(args.mask)) > 1:
+        raise ValueError("Must specify either a Bessel cone angle, a Fresnel lens pattern, or a phase mask file.")
     if bessel_angle > 0:
         print(f"Generating axicon phase mask: {N}x{N}, {px_um}um, {wavelength_nm}nm, angle={bessel_angle}deg")
         mask_np = generate_axicon_phase_mask(
@@ -74,7 +94,6 @@ def main():
     plt.tight_layout()
     plt.savefig(mask_png_path)
     print(f"Saved phase mask as PNG to {mask_png_path}")
-        
 
     mask_tensor = torch.from_numpy(mask_np).type(torch.FloatTensor).to(device)
 
@@ -93,17 +112,17 @@ def main():
             output_layer = phys_layer.fourf(mask_tensor)
         else:
             raise ValueError('lens approach not supported')
-        
-        # squeeze the output layer to remove singleton dimensions
-        output_layer = output_layer.squeeze() 
-        #output_layer = output_layer.detach().cpu().numpy()
-        #output_layer = np.squeeze(output_layer)
 
-        print("Generating beam profile...") 
+        # squeeze the output layer to remove singleton dimensions
+        output_layer = output_layer.squeeze()
+
+        print("Generating beam profile...")
         output_beam_sections_dir = os.path.join(output_subdir, "beam_sections")
         os.makedirs(output_beam_sections_dir, exist_ok=True)
         beam_profile = phys_layer.generate_beam_cross_section(
-            output_layer, output_beam_sections_dir, (args.z_min, args.z_max, args.z_step), (args.y_min, args.y_max), asm = asm
+            output_layer, output_beam_sections_dir,
+            (z_min_pixels, z_max_pixels, z_step_pixels),
+            (y_min_pixels, y_max_pixels), asm = asm
         )
 
         # Save as TIFF (like mask_inference)
@@ -116,34 +135,40 @@ def main():
         plt.figure(figsize=(5, 10))
         plt.imshow(phys_layer.normalize_to_uint16(beam_profile), cmap='hot', aspect='equal')
         plt.colorbar()
+
         # Set axis labels and ticks in mm
-        z_range = np.arange(args.z_min* px_mm, args.z_max* px_mm, args.z_step * px_mm)  # mm
-        y_range = np.arange(args.y_min*px_mm, px_mm * (args.y_max), px_mm)   # mm
+        z_range_mm = np.linspace(z_min_mm, z_max_mm, num_z_steps)
+        y_range_mm = np.linspace(y_min_mm, y_max_mm, y_max_pixels - y_min_pixels + 1) * px_mm # Convert y-range back to mm for labels
 
         plt.title(
-            f"Beam Profile\n"
-            f"z: {args.z_min*px_mm}mm-{args.z_max*px_mm}mm, step={args.z_step*px_mm}mm,\n"
+            f"Timestamp: {timestamp}\n"
+            f"z: {z_min_mm:.2f}mm-{z_max_mm:.2f}mm, steps={num_z_steps},\n"
             f"axicon angle={bessel_angle}°, \n"
             f"lens={lens_approach}, \n"
             f"focal_length_1={1000*config.get('focal_length', 'N/A')}mm, \n"
             f"focal_length_2={1000*config.get('focal_length_2', 'N/A')}mm \n"
-            f"{'Fresnel lens' if args.fresnel_lens_pattern else ''}"
+            f"Mask: {'Fresnel lens' if args.fresnel_lens_pattern else 'empty'}\n"
+            # display px
+            f"Pixel size: {px_um:.2f} um\n"
             f"{'ASM prop' if asm else 'Fresnel prop'}"
         )
         plt.xlabel("y (mm)")
         plt.ylabel("z (mm)")
         plt.yticks(
-            ticks=np.linspace(0, len(z_range)-1, num=5),
-            labels=[f"{z_range[int(i)]:.2f}" for i in np.linspace(0, len(z_range)-1, num=5)]
+            ticks=np.linspace(0, len(z_range_mm)-1, num=5),
+            labels=[f"{z_range_mm[int(i)]:.2f}" for i in np.linspace(0, len(z_range_mm)-1, num=5)]
         )
+        # For y-axis ticks, we need to map pixel indices to mm values
+        y_tick_pixels = np.linspace(0, beam_profile.shape[1] - 1, num=5)
+        y_tick_mm_labels = [f"{y_min_mm + (idx / beam_profile.shape[1]) * (y_max_mm - y_min_mm):.2f}" for idx in y_tick_pixels]
         plt.xticks(
-            ticks=np.linspace(0, len(y_range)-1, num=5),
-            labels=[f"{y_range[int(i)]:.2f}" for i in np.linspace(0, len(y_range)-1, num=5)]
+            ticks=y_tick_pixels,
+            labels=y_tick_mm_labels
         )
         plt.tight_layout()
         plt.savefig(png_path)
         print(f"Saved beam profile as PNG to {png_path}")
-        
+
         # save the config used for this test
         config_output_path = os.path.join(output_subdir, "config.yaml")
         with open(config_output_path, "w") as f:

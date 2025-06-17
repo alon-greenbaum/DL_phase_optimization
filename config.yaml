@@ -10,7 +10,7 @@ particle_spatial_range_z: [-10, 11, 1]  # um default range(-10,11,1)
 # Define the parameters
 N: 500  # grid size
 px: 0.25e-6 # 1.0e-6 # 0.25e-6  # pixel size [m]
-focal_length: 500.0e-5  # [m] equivalent to 2 mm away from the lens
+focal_length: 1.0e-3  # [m] equivalent to 2 mm away from the lens
 wavelength: 561.0e-9  # [m]
 refractive_index: 1.0  # We assume propagation is in air
 psf_width_pixels: 101  # How big will be the psf image
@@ -62,6 +62,12 @@ weights: [1.0,1.0,1.5] # cross entropy loss weights (must be floats)
 # try focal loss
 # changing input z slices
 initial_phase_mask: "bessel"
-bessel_cone_angle_degrees: 0
+bessel_cone_angle_degrees: 1.0
 focal_length_2: 500.0e-6  # [m] focal length of the second lens
 angular_spectrum_method: True
+
+z_min_mm: -2.0         # Minimum z-position for beam profile in millimeters
+z_max_mm: 2.0          # Maximum z-position for beam profile in millimeters
+y_min_mm: -0.05          # Minimum y-position for beam profile in millimeters
+y_max_mm: 0.05        # Maximum y-position for beam profile in millimeters
+num_z_steps: 1000        # Number of simulation steps/planes across the z-range
