@@ -16,9 +16,9 @@ def main():
     parser.add_argument("--mask", type=str, default="", help="Optional: path to phase mask tiff (default: zeros)")
     #parser.add_argument("--axicon", action="store_true", help="Use axicon phase mask (Bessel beam)")
     parser.add_argument("--output_dir", type=str, default="beam_profile_test", help="Output directory")
-    parser.add_argument("--z_min", type=int, default=-500)
-    parser.add_argument("--z_max", type=int, default=500)
-    parser.add_argument("--z_step", type=int, default=1)
+    parser.add_argument("--z_min", type=int, default=-10000)
+    parser.add_argument("--z_max", type=int, default=10000)
+    parser.add_argument("--z_step", type=int, default=50)
     parser.add_argument("--y_min", type=int, default=-100)
     parser.add_argument("--y_max", type=int, default=100)
     parser.add_argument("--fresnel_lens_pattern", action="store_true", help="Use Fresnel lens phase mask")
@@ -31,6 +31,8 @@ def main():
 
     config = load_config(args.config)
     N = config['N']
+    px = config['px']  # pixel size in meters
+    px_mm = config['px'] * 1e3 if config['px'] < 1e-3 else config['px']  # px in mm
     px_um = config['px'] * 1e6 if config['px'] < 1e-3 else config['px']  # px in um
     wavelength_nm = config['wavelength'] * 1e9 if config['wavelength'] < 1e-6 else config['wavelength']  # wavelength in nm
     beam_fwhm = config['laser_beam_FWHC']
@@ -115,12 +117,12 @@ def main():
         plt.imshow(phys_layer.normalize_to_uint16(beam_profile), cmap='hot', aspect='equal')
         plt.colorbar()
         # Set axis labels and ticks in mm
-        z_range = np.arange(args.z_min, args.z_max, args.z_step) / 1000  # mm
-        y_range = np.arange(args.y_min, args.y_max + 1) / 1000  # mm
+        z_range = np.arange(args.z_min* px_mm, args.z_max* px_mm, args.z_step * px_mm)  # mm
+        y_range = np.arange(args.y_min*px_mm, px_mm * (args.y_max), px_mm)   # mm
 
         plt.title(
             f"Beam Profile\n"
-            f"z: {args.z_min/1000}mm-{args.z_max/1000}mm, step={args.z_step//1000}mm,\n"
+            f"z: {args.z_min*px_mm}mm-{args.z_max*px_mm}mm, step={args.z_step*px_mm}mm,\n"
             f"axicon angle={bessel_angle}°, \n"
             f"lens={lens_approach}, \n"
             f"focal_length_1={1000*config.get('focal_length', 'N/A')}mm, \n"

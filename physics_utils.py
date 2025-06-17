@@ -431,29 +431,86 @@ class PhysicalLayer(nn.Module):
         U1 = torch.real(U1 * torch.conj(U1))
         return U1
     
-    def fresnel_propagation(self, input_img, z):
+    def fresnel_propagation(self, input_img, z, debug=False):
         """
-        Fresnel propagation for a given output_layer and z pixel distance.
+        Fresnel propagation for a given input_img and z pixel distance.
 
         Args:
-            output_layer (torch.Tensor): The complex field to propagate.
+            input_img (torch.Tensor): The complex field to propagate.
             z (float or int): The z pixel distance for propagation.
+            debug (bool, optional): If True, visualizes intermediate steps for debugging. Defaults to False.
 
         Returns:
             torch.Tensor: The propagated intensity (real-valued).
         """
+        
         Q = np.exp(1j * self.k / (2 * z * self.px) * (
                     np.square(self.XX) + np.square(self.YY)))  # Fresnel diffraction equation
         Q = torch.from_numpy(Q).type(torch.cfloat).to(self.device)
 
-        #Q1 = np.exp(1j * (np.pi * refractive_index / (self.wavelength * self.focal_length)) * (
-        #            np.square(XX) + np.square(YY)))  # Fresnel diffraction equation at distance = focal length
-        #self.Q1 = torch.from_numpy(Q1).type(torch.cfloat).to(device)
+        if debug:
+            # Visualize the phase and magnitude of Q for debugging
+            Q_np = Q.cpu().numpy()
+            plt.figure(figsize=(12, 5))
+            plt.subplot(1, 2, 1)
+            plt.title("Phase of Q")
+            plt.imshow(np.angle(Q_np), cmap='twilight')
+            plt.colorbar()
+            plt.subplot(1, 2, 2)
+            plt.title("Magnitude of Q")
+            plt.imshow(np.abs(Q_np), cmap='viridis')
+            plt.colorbar()
+            plt.tight_layout()
+            plt.show(block=False)
+        
         Uo_pad = F.pad(input_img, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
+        
+        if debug:
+            # Visualize the phase and magnitude of Uo_pad for debugging
+            Uo_pad_np = Uo_pad.cpu().detach().numpy()
+            plt.figure(figsize=(12, 5))
+            plt.subplot(1, 2, 1)
+            plt.title("Phase of Uo_pad")
+            plt.imshow(np.angle(Uo_pad_np), cmap='twilight')
+            plt.colorbar()
+            plt.subplot(1, 2, 2)
+            plt.title("Magnitude of Uo_pad")
+            plt.imshow(np.abs(Uo_pad_np), cmap='viridis')
+            plt.colorbar()
+            plt.tight_layout()
+            plt.show(block=False)
+
         U1 = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(Q)) # light directly incident of the lens
+        
+        if debug:
+            # Visualize the phase and magnitude of U1 for debugging
+            U1_np = U1.cpu().detach().numpy()
+            plt.figure(figsize=(12, 5))
+            plt.subplot(1, 2, 1)
+            plt.title("Phase of U1")
+            plt.imshow(np.angle(U1_np), cmap='twilight')
+            plt.colorbar()
+            plt.subplot(1, 2, 2)
+            plt.title("Magnitude of U1")
+            plt.imshow(np.abs(U1_np), cmap='viridis')
+            plt.colorbar()
+            plt.tight_layout()
+            plt.show(block=False)
+
         U1_cropped = U1[-self.N:, -self.N:]
         U1_intensity = torch.real(U1_cropped * torch.conj(U1_cropped))
+        
+        if debug:
+            plt.figure(figsize=(6, 5))
+            plt.title("U1 Intensity (Fresnel Propagation)")
+            plt.imshow(U1_intensity.cpu().detach().numpy(), cmap='viridis')
+            plt.colorbar()
+            plt.tight_layout()
+            plt.show(block=False)
+            breakpoint()  # Pause for debugging
+
         return U1_intensity
+
     
     @staticmethod
     def normalize_to_uint16(img: np.ndarray) -> np.ndarray:
@@ -475,6 +532,36 @@ class PhysicalLayer(nn.Module):
         max_val = img_float.max()
         if max_val > 0:
             img_float /= max_val
+        return (img_float * 65535).astype(np.uint16)
+    
+
+    @staticmethod
+    def standardize_and_scale_to_uint16(img: np.ndarray) -> np.ndarray:
+        """
+        Standardizes an image (zero mean, unit variance) and rescales to uint16 [0, 65535].
+        Args:
+            img (np.ndarray): The input image array.
+        Returns:
+            np.ndarray: The standardized and scaled image as uint16.
+        """
+        # If tensor, convert to numpy
+        if isinstance(img, torch.Tensor):
+            img = img.cpu().numpy()
+        img_float = img.astype(np.float64)
+        mean = img_float.mean()
+        std = img_float.std()
+        if std > 0:
+            img_float = (img_float - mean) / std
+        else:
+            img_float = img_float - mean  # Avoid division by zero
+
+        # Min-max scale to [0, 1]
+        img_float -= img_float.min()
+        max_val = img_float.max()
+        if max_val > 0:
+            img_float /= max_val
+
+        # Scale to uint16
         return (img_float * 65535).astype(np.uint16)
     
     def generate_beam_cross_section(self, initial_field: np.ndarray, output_folder: str, z_range_px: tuple, y_slice_px: tuple, asm: bool = True) -> np.ndarray:
@@ -521,12 +608,13 @@ class PhysicalLayer(nn.Module):
 
 
             # Extract the central 1D slice along the y-axis
-            center_row_idx = intensity_at_z.shape[1] // 2
-            center_col_idx = intensity_at_z.shape[2] // 2
-            cross_section_profile[i,:] = intensity_at_z[i, center_row_idx, center_col_idx + y_min_px : center_col_idx + y_max_px]
+            center_row_idx = intensity_at_z[i].shape[0] // 2
+            center_col_idx = intensity_at_z[i].shape[1] // 2
+            cross_section_profile[i,:] = intensity_at_z[i][ center_row_idx, center_col_idx + y_min_px : center_col_idx + y_max_px]
         
         # normalize intensity_at_z to uint16
-        intensity_at_z = self.normalize_to_uint16(intensity_at_z)
+        #intensity_at_z = self.normalize_to_uint16(intensity_at_z[:])
+        intensity_at_z = self.standardize_and_scale_to_uint16(intensity_at_z[:])
         for i, z_px in enumerate(range(z_min_px, z_max_px, z_step)):
             # Save the full 2D intensity profile at the current z-step
             save_path = os.path.join(output_folder, f'intensity_z_{i:04d}.tiff')

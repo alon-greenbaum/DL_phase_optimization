@@ -9,9 +9,9 @@ particle_spatial_range_xy: [15, 185]  # dependence on the volume size default 20
 particle_spatial_range_z: [-10, 11, 1]  # um default range(-10,11,1)
 # Define the parameters
 N: 500  # grid size
-px: 1.0e-6  # pixel size [m]
+px: 0.25e-6 # 1.0e-6 # 0.25e-6  # pixel size [m]
 focal_length: 500.0e-5  # [m] equivalent to 2 mm away from the lens
-wavelength: 0.561e-6  # [m]
+wavelength: 561.0e-9  # [m]
 refractive_index: 1.0  # We assume propagation is in air
 psf_width_pixels: 101  # How big will be the psf image
 psf_edge_remove: 15
@@ -27,7 +27,7 @@ data_path: "beads_img_defocus"
 path_save: "data_mask_learning"
 path_train: "traininglocations"
 ori_intensity: 20000  # arbitrary units
-laser_beam_FWHC: 425.0e-6  # in m, the size of the FWHM of the Gaussian beam (0.6mm with 3x BE)
+laser_beam_FWHC: 0.00001 #425.0e-6  # in m, the size of the FWHM of the Gaussian beam (0.6mm with 3x BE)
 max_defocus: 41  # um for generating the PSFs
 learning_rate_scheduler_factor: 0.1
 learning_rate_scheduler_patience: 5
@@ -64,4 +64,4 @@ weights: [1.0,1.0,1.5] # cross entropy loss weights (must be floats)
 initial_phase_mask: "bessel"
 bessel_cone_angle_degrees: 0
 focal_length_2: 500.0e-6  # [m] focal length of the second lens
-angular_spectrum_method: False
+angular_spectrum_method: True
