@@ -356,7 +356,7 @@ class PhysicalLayer(nn.Module):
                 * torch.exp(1j * self.k * self.gamma_cust * z * self.px)
             )
         )
-        U1 = torch.real(U1 * torch.conj(U1))
+        #U1 = torch.real(U1 * torch.conj(U1))
         return U1
     
     def fresnel_propagation(self, input_img, z, debug=False):
@@ -453,17 +453,11 @@ class PhysicalLayer(nn.Module):
 
     def fourier_lens(self, mask_param):
         Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
-        Ta = Ta[None, None, :]
         Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
-        Uo_pad = F.pad(Uo, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-        Ul = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1)) # light directly infront of the lens
-        Ul_cropped = Ul[:, :, -self.N:, -self.N:]
-        if self.aperature == True:
-            Ul_cropped = self.circular_aperature(Ul_cropped,self.device)
-        Ul_prime = Ul_cropped * self.B1 # light after the lens
-        Ul_prime_pad = F.pad(Ul_prime, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-        Uf = torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1)) # light at the back focal plane of the lens   
-        output_layer = Uf[:, :, -self.N:, -self.N:]
+        Ul = self.angular_spectrum_propagation(Uo, self.focal_length) # light directly infront of the lens
+        Ul_prime = Ul * self.B1 # light after the lens
+        Uf = self.angular_spectrum_propagation(Ul_prime, self.focal_length) # light at the back focal plane of the lens
+        output_layer = Uf[None, None, :, :] # light at the back focal plane of the lens
         return output_layer
 
     def lensless(self, mask_param):
@@ -474,6 +468,18 @@ class PhysicalLayer(nn.Module):
         return output_layer
 
     def fourf(self, mask_param):
+        
+        Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
+        Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
+        Ul1 = self.angular_spectrum_propagation(Uo, self.focal_length) # light directly infront of the lens
+        Ul1_prime = Ul1 * self.B1 # light after the lens
+        Uf1 = self.angular_spectrum_propagation(Ul1_prime, self.focal_length) # light at the back focal plane of the lens
+        Ul2 = self.angular_spectrum_propagation(Uf1, self.focal_length_2) # light directly infront of the lens
+        Ul2_prime = Ul2 * self.B2 # light after the 2nd lens
+        Uf2 = self.angular_spectrum_propagation(Ul2_prime, self.focal_length_2) # light at the back focal plane of the lens
+        output_layer = Uf2[None, None, :, :] # light at the back focal plane of the lens
+        
+        """
         Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
         Ta = Ta[None, None, :]
         Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
@@ -509,6 +515,7 @@ class PhysicalLayer(nn.Module):
 
         # Final output of the 4f system (cropped BFP of the 2nd lens)
         output_layer = U_output_4f[:, :, -self.N:, -self.N:]
+        """
         return output_layer
 
     
@@ -603,11 +610,11 @@ class PhysicalLayer(nn.Module):
         
             # Propagate field and get intensity
             if asm:
-                intensity_at_z[i] = self.angular_spectrum_propagation(initial_field, z_px)
-
+                output_field = self.angular_spectrum_propagation(initial_field, z_px)
+                intensity_at_z[i] = torch.real(output_field * torch.conj(output_field))
             else:
-                intensity_at_z[i] = self.fresnel_propagation(initial_field, z_px)
-
+                output_field = self.fresnel_propagation(initial_field, z_px)
+                intensity_at_z[i] = torch.real(output_field * torch.conj(output_field))
 
             # Extract the central 1D slice along the y-axis
             center_row_idx = intensity_at_z[i].shape[0] // 2

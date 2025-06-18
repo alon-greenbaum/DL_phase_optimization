@@ -125,7 +125,7 @@ def calculate_fwhm_2d_gaussian(image_path, pixel_size_meters):
         return None
 
 if __name__ == "__main__":
-    image_path = "beam_axicon/20250618-125424/beam_sections/intensity_z_0500.tiff"
+    image_path = "beam_axicon/20250618-141802/beam_sections/intensity_z_0750.tiff"
     # Example pixel size: 5.2 micrometers (5.2e-6 meters)
     pixel_size_meters = 0.25e-6
     results_focused = calculate_fwhm_2d_gaussian(image_path, pixel_size_meters)
