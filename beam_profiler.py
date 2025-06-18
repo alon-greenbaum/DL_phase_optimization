@@ -15,7 +15,7 @@ def main():
     parser.add_argument("--config", type=str, required=True, help="Path to config.yaml")
     parser.add_argument("--mask", type=str, default="", help="Optional: path to phase mask tiff (default: zeros)")
     parser.add_argument("--output_dir", type=str, default="beam_profile_test", help="Output directory")
-    parser.add_argument("--fresnel_lens_pattern", action="store_true", help="Use Fresnel lens phase mask")
+    #parser.add_argument("--fresnel_lens_pattern", action="store_true", help="Use Fresnel lens phase mask")
     args = parser.parse_args()
 
     # Create a timestamped subfolder output dir
@@ -34,6 +34,7 @@ def main():
     config['device'] = 'cuda' if torch.cuda.is_available() else 'cpu'
     device = config['device']
     asm = config.get('angular_spectrum_method', True)
+    initial_phase_mask = config.get('initial_phase_mask', "")
 
     # Get z_min, z_max, y_min, y_max, and num_z_steps from config
     z_min_mm = config.get('z_min_mm', -10.0) # Default to -10 mm if not in config
@@ -60,9 +61,9 @@ def main():
 
     # Generate or load phase mask
     # assert that either bessel_angle > 0 or args.fresnel_lens_pattern is True or args.mask is provided
-    if int(bessel_angle > 0) + int(args.fresnel_lens_pattern) + int(bool(args.mask)) > 1:
-        raise ValueError("Must specify either a Bessel cone angle, a Fresnel lens pattern, or a phase mask file.")
-    if bessel_angle > 0:
+    #if int(bessel_angle > 0) + int(bool(initial_phase_mask)) + int(bool(args.mask)) > 1:
+    #    raise ValueError("Must specify either a Bessel cone angle, a Fresnel lens pattern, or a phase mask file.")
+    if bessel_angle > 0 and initial_phase_mask == "axicon":
         print(f"Generating axicon phase mask: {N}x{N}, {px_um}um, {wavelength_nm}nm, angle={bessel_angle}deg")
         mask_np = generate_axicon_phase_mask(
             mask_resolution_pixels=(N, N),
@@ -70,19 +71,27 @@ def main():
             wavelength_nm=wavelength_nm,
             bessel_cone_angle_degrees=bessel_angle
         )
-    elif args.fresnel_lens_pattern:
+        
+    elif args.mask:
+        print(f"Loading phase mask from {args.mask}")
+        mask_np = skimage.io.imread(args.mask).astype(np.float32)
+        if mask_np.shape != (N, N):
+            raise ValueError(f"Loaded mask shape {mask_np.shape} does not match expected {(N, N)}")
+        
+    elif initial_phase_mask == "fresnel_lens":
         print(f"Generating a Fresnel lens phase mask: {N}x{N}, {px_um}um, {wavelength_nm}nm, focal_length={config['focal_length']}m")
         # Generate Fresnel lens phase mask
         yy, xx = np.meshgrid(np.arange(N) - N // 2, np.arange(N) - N // 2)
         r = np.sqrt(xx**2 + yy**2) * px_um * 1e-6  # radius in meters
         fresnel_phase = (-np.pi / (wavelength_nm * 1e-9 * config['focal_length'])) * (r ** 2)
         mask_np = np.mod(fresnel_phase, 2 * np.pi).astype(np.float32)
-    elif args.mask:
-        print(f"Loading phase mask from {args.mask}")
-        mask_np = skimage.io.imread(args.mask).astype(np.float32)
-        if mask_np.shape != (N, N):
-            raise ValueError(f"Loaded mask shape {mask_np.shape} does not match expected {(N, N)}")
+   
+    elif initial_phase_mask == "empty":
+        print("Using empty phase mask (zeros)")
+        mask_np = np.zeros((N, N), dtype=np.float32)
+        
     else:
+        print("No phase mask specified, using empty mask (zeros)")
         mask_np = np.zeros((N, N), dtype=np.float32)
 
     # save the mask as png figure for easy viewing
@@ -103,7 +112,8 @@ def main():
     phys_layer.eval()
     with torch.no_grad():
         if lens_approach == 'fourier' or lens_approach == 'against_lens':
-            output_layer = phys_layer.a(mask_tensor)
+            print("are you sure you didnt mean fourier lens?")
+            #output_layer = phys_layer.a(mask_tensor)
         elif lens_approach == 'fourier_lens' or lens_approach == 'convolution':
             output_layer = phys_layer.fourier_lens(mask_tensor)
         elif lens_approach == 'lensless':
@@ -145,12 +155,13 @@ def main():
             f"z: {z_min_mm:.2f}mm-{z_max_mm:.2f}mm, steps={num_z_steps},\n"
             f"axicon angle={bessel_angle}°, \n"
             f"lens={lens_approach}, \n"
-            f"focal_length_1={1000*config.get('focal_length', 'N/A')}mm, \n"
-            f"focal_length_2={1000*config.get('focal_length_2', 'N/A')}mm \n"
-            f"Mask: {'Fresnel lens' if args.fresnel_lens_pattern else 'empty'}\n"
+            f"focal_length_1={1.0e3*config.get('focal_length', 'N/A')}mm, \n"
+            f"focal_length_2={1.0e3*config.get('focal_length_2', 'N/A')}mm \n"
+            f"Mask: {initial_phase_mask}\n"
             # display px
             f"Pixel size: {px_um:.2f} um\n"
-            f"{'ASM prop' if asm else 'Fresnel prop'}"
+            f"{'ASM prop' if asm else 'Fresnel prop'}, "
+            f"FWHM: {beam_fwhm*10**6:.2f} um"
         )
         plt.xlabel("y (mm)")
         plt.ylabel("z (mm)")

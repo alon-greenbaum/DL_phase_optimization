@@ -10,7 +10,7 @@ particle_spatial_range_z: [-10, 11, 1]  # um default range(-10,11,1)
 # Define the parameters
 N: 500  # grid size
 px: 0.25e-6 # 1.0e-6 # 0.25e-6  # pixel size [m]
-focal_length: 1.0e-3  # [m] equivalent to 2 mm away from the lens
+focal_length: 1.0e-3  # [m]
 wavelength: 561.0e-9  # [m]
 refractive_index: 1.0  # We assume propagation is in air
 psf_width_pixels: 101  # How big will be the psf image
@@ -27,7 +27,7 @@ data_path: "beads_img_defocus"
 path_save: "data_mask_learning"
 path_train: "traininglocations"
 ori_intensity: 20000  # arbitrary units
-laser_beam_FWHC: 0.00001 #425.0e-6  # in m, the size of the FWHM of the Gaussian beam (0.6mm with 3x BE)
+laser_beam_FWHC: 100.0e-6 #425.0e-6  # in m, the size of the FWHM of the Gaussian beam (0.6mm with 3x BE)
 max_defocus: 41  # um for generating the PSFs
 learning_rate_scheduler_factor: 0.1
 learning_rate_scheduler_patience: 5
@@ -42,7 +42,7 @@ ratio_input_output_image_size: 1  # default with Unet 1, with ResNet 4
 z_range_cost_function: [0,0] # default 1
 use_unet: true
 num_classes: 1
-lens_approach: "lensless" # "fourier" or "fresnel"
+lens_approach: "fourier_lens" # "fourier" or "fresnel"
 power_2: 1000 # pad to this power for fourier transform
 bfp_dir: "back_focal_plane"
 dropout: 0.5
@@ -61,8 +61,8 @@ weights: [1.0,1.0,1.5] # cross entropy loss weights (must be floats)
 # increase z couple spacing or ratio to increase the number of between beads
 # try focal loss
 # changing input z slices
-initial_phase_mask: "bessel"
-bessel_cone_angle_degrees: 1.0
+initial_phase_mask: "empty"
+bessel_cone_angle_degrees: 0.0
 focal_length_2: 500.0e-6  # [m] focal length of the second lens
 angular_spectrum_method: True
 
