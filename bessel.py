@@ -54,6 +54,7 @@ def generate_axicon_phase_mask(
     # Generate the phase mask
     # The phase is modulo 2*pi for an SLM (0 to 2*pi)
     phase_mask = (axicon_constant * R) % (2 * np.pi)
+    phase_mask = 2 * np.pi - phase_mask  # Invert phase for SLM compatibility
 
     return phase_mask
 

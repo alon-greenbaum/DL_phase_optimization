@@ -284,7 +284,7 @@ class PhysicalLayer(nn.Module):
 
         # read defocus images
         self.imgs = []
-        #Cut the PSF images at different planes
+        # Cut the PSF images at different planes
         for z in range(0, max_defocus):
             img = skimage.io.imread('beads_img_defocus/z' + str(z).zfill(2) + '.tiff')
             center_img = len(img)//2
@@ -304,7 +304,7 @@ class PhysicalLayer(nn.Module):
         self.img4dto3d = imgs4dto3d(device)
         self.noise = NoiseLayer(device, self.Nimgs, self.conv3d)
         self.norm01 = Normalize01()
-
+        
     def circular_aperature(self, arr):
         """
         Sets elements outside a centered circle to zero for a PyTorch tensor.
@@ -338,8 +338,33 @@ class PhysicalLayer(nn.Module):
         result = arr * mask.to(self.device)
 
         return result
-
-    def angular_spectrum_propagation(self, output_layer, z):
+    
+    @staticmethod
+    def _visualize_step(title, tensor):
+        arr = tensor.cpu().detach().numpy()
+        plt.figure(figsize=(12, 5))
+        plt.subplot(1, 2, 1)
+        plt.title(f"{title} - Phase")
+        plt.imshow(np.angle(arr), cmap='twilight')
+        plt.colorbar()
+        plt.subplot(1, 2, 2)
+        plt.title(f"{title} - Magnitude")
+        plt.imshow(np.abs(arr), cmap='viridis')
+        plt.colorbar()
+        plt.tight_layout()
+        plt.show(block=False)
+        
+    @staticmethod
+    def _visualize_real(title, tensor):
+        arr = tensor.cpu().detach().numpy()
+        plt.figure(figsize=(6, 5))
+        plt.title(title)
+        plt.imshow(arr, cmap='viridis')
+        plt.colorbar()
+        plt.tight_layout()
+        plt.show(block=False)
+        
+    def angular_spectrum_propagation(self, input_field, z, debug=False):
         """
         Angular spectrum propagation for a given output_layer and z pixel distance.
 
@@ -350,12 +375,46 @@ class PhysicalLayer(nn.Module):
         Returns:
             torch.Tensor: The propagated intensity (real-valued).
         """
-        U1 = torch.fft.ifft2(
-            torch.fft.ifftshift(
-                torch.fft.fftshift(torch.fft.fft2(output_layer)) 
-                * torch.exp(1j * self.k * self.gamma_cust * z * self.px)
-            )
-        )
+        # Step 1: FFT2
+        fft2_field = torch.fft.fft2(input_field)
+        if debug:
+            self._visualize_step("FFT2(output_layer)", fft2_field)
+            
+            
+        # Step 2: Propagation kernel
+        prop_kernel = torch.exp(1j * self.k * self.gamma_cust * z * self.px)
+        if debug:
+         self._visualize_step("Propagation Kernel", prop_kernel)
+         
+         # Step 3: FFTSHIFT
+        prop_kernel_shift = torch.fft.fftshift(prop_kernel)
+        if debug:
+            self._visualize_step("FFTSHIFT(prop_kernel)", prop_kernel_shift)
+         
+        # Step 4: Multiply
+        mult = fft2_field * prop_kernel_shift
+        if debug:
+            self._visualize_step("Multiplied Spectrum", mult)
+            
+        # # Step 5: IFFTSHIFT
+        # ifftshifted = torch.fft.ifftshift(mult)
+        # if debug:
+        #     self._visualize_step("IFFTSHIFT(Multiplied)", ifftshifted)
+            
+        # Step 6: IFFT2
+        U1 = torch.fft.ifft2(mult)
+        if debug:
+            self._visualize_step("IFFT2", U1)
+            self._visualize_real("Intensity (real(U1 * conj(U1)))", torch.real(U1 * torch.conj(U1)))
+        
+        #U1_old = torch.fft.ifft2(
+        #        torch.fft.fft2(output_layer)
+        #        * torch.fft.fftshift(torch.exp(1j * self.k * self.gamma_cust * z * self.px))
+        #)
+        
+        #if debug:
+        #    self._visualize_step("U1_old", U1_old)
+        #    self._visualize_real("Intensity (real(U1_old * conj(U1_old)))", torch.real(U1_old * torch.conj(U1_old)))
         #U1 = torch.real(U1 * torch.conj(U1))
         return U1
     
@@ -471,12 +530,12 @@ class PhysicalLayer(nn.Module):
         
         Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
         Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
-        Ul1 = self.angular_spectrum_propagation(Uo, self.focal_length) # light directly infront of the lens
+        Ul1 = self.angular_spectrum_propagation(Uo, self.focal_length, debug = False) # light directly infront of the lens
         Ul1_prime = Ul1 * self.B1 # light after the lens
-        Uf1 = self.angular_spectrum_propagation(Ul1_prime, self.focal_length) # light at the back focal plane of the lens
-        Ul2 = self.angular_spectrum_propagation(Uf1, self.focal_length_2) # light directly infront of the lens
+        Ul2 = self.angular_spectrum_propagation(Ul1_prime, self.focal_length+self.focal_length_2, debug = False) # light at the back focal plane of the lens
+        #Ul2 = self.angular_spectrum_propagation(Uf1, self.focal_length_2) # light directly infront of the lens
         Ul2_prime = Ul2 * self.B2 # light after the 2nd lens
-        Uf2 = self.angular_spectrum_propagation(Ul2_prime, self.focal_length_2) # light at the back focal plane of the lens
+        Uf2 = self.angular_spectrum_propagation(Ul2_prime, self.focal_length_2, debug = False) # light at the back focal plane of the lens
         output_layer = Uf2[None, None, :, :] # light at the back focal plane of the lens
         
         """
@@ -655,7 +714,7 @@ class PhysicalLayer(nn.Module):
             E2 = torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fft2(E1) * torch.fft.fft2(self.Q1)))
             output_layer = E2[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
         
-        elif self.lens_approach == 'fourier' or self.lens_approach == 'against_lens':
+        elif self.lens_approach == 'against_lens':
             output_layer = self.against_lens(mask_param)
             
         elif self.lens_approach == 'fourier_lens' or self.lens_approach == 'convolution':
@@ -678,7 +737,9 @@ class PhysicalLayer(nn.Module):
             #output_layer = Uf[-self.N:, -self.N:] """
             
         elif self.lens_approach == 'lensless':
-            output_layer = self.lensless(self, mask_param)
+            output_layer = self.lensless(mask_param)
+            # propagate to 1mm or 1e3 pixels infront of lens
+            output_layer = self.angular_spectrum_propagation(output_layer, 1.0e3) # 1mm infront of lens
             #Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
             #Ta = Ta[None, None, :]
             #Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
@@ -697,9 +758,6 @@ class PhysicalLayer(nn.Module):
 
             
         elif self.lens_approach == '4f':
-            if self.focal_length_2 <= 0:
-                raise ValueError('focal_length_2 must be greater than 0 for 4f approach')
-            
             output_layer = self.fourf(mask_param)
             
             """ Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
@@ -765,9 +823,10 @@ class PhysicalLayer(nn.Module):
 
                     x_ori = xyz[i, j, 0].type(torch.LongTensor)
                     U1 = self.angular_spectrum_propagation(output_layer, x) # angular spectrum propagation
-
+                    U1_intensity = torch.real(U1 * torch.conj(U1)) # intensity of the propagated field
+                    #U1 = self.fresnel_propagation(output_layer, x) # fresnel propagation
                     # Here we assume that the beam is being dithered up and down
-                    intensity = torch.sum(U1[0, 0, :, int((self.N//2-1) + z)]) # if px is 1e-6 why multiply by 1e6?
+                    intensity = torch.sum(U1_intensity[0, 0, :, int((self.N//2-1) + z)]) # if px is 1e-6 why multiply by 1e6?
                     if self.conv3d == False:
                         imgs3D[i, l, x_ori - self.psf_keep_radius:x_ori + self.psf_keep_radius+1, y - self.psf_keep_radius: y + self.psf_keep_radius + 1] += torch.from_numpy(
                             self.imgs[abs(z.item()-self.z_depth_list[l])].astype('float32')).type(torch.FloatTensor).to(self.device) * intensity

@@ -165,7 +165,7 @@ def learn_mask(config,res_dir):
     torch.backends.cudnn.benchmark = True
 
     #Set the mask_phase as the parameter to derive
-    if config.get('initial_phase_mask', None) == "bessel":
+    if config.get('initial_phase_mask', None) == "axicon":
         mask_phase = generate_axicon_phase_mask(
             (mask_phase_pixels, mask_phase_pixels), px*10**6, wavelength*10**9, bessel_cone_angle_degrees
         )
@@ -327,6 +327,7 @@ def learn_mask(config,res_dir):
         if epoch % 10 == 0:
             torch.save(cnn.state_dict(),os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
         savePhaseMask(mask_param, batch_index, epoch, res_dir)
+    torch.save(cnn.state_dict(),os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
     return labels
 
 if __name__ == '__main__':
@@ -335,12 +336,12 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     config = load_config("config.yaml")
-    z_range_cost_function = config['z_range_cost_function']
+    #z_range_cost_function = config['z_range_cost_function']
     z_coupled_ratio = config.get('z_coupled_ratio',0)
     z_coupled_spacing_range = config.get('z_coupled_spacing_range',(0,0))
     num_classes = config['num_classes']
    
-    assert (z_range_cost_function[1]-z_range_cost_function[0]+1) == 1, "we haven't set up multi img output prediction yet" 
+    #assert (z_range_cost_function[1]-z_range_cost_function[0]+1) == 1, "we haven't set up multi img output prediction yet" 
     if num_classes > 1:
         assert z_coupled_ratio > 0 and z_coupled_spacing_range[0] > 0, "z_coupled_ratio and z_coupled_spacing_range should be set for multi class imgs"
     

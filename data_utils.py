@@ -236,7 +236,7 @@ def batch_xyz_to_boolean_grid(xyz_np, config):
     # set dimension
     H = image_volume[0]
     W = image_volume[1]
-    D = z_range_cost_function[1] - z_range_cost_function[0] + 1
+    D = 1
 
     boolean_grid = np.zeros((batch_size, D, H // int(ratio_input_output_image_size), \
                              W // int(ratio_input_output_image_size)))
