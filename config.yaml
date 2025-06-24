@@ -21,7 +21,7 @@ bead_radius: 1.0  # pixels 1.0 default, can change to make larger beads
 random_seed: 12345
 initial_learning_rate: 0.01
 batch_size: 1
-max_epochs: 100
+max_epochs: 200
 mask_phase_pixels: 500
 data_path: "beads_img_defocus"
 path_save: "data_mask_learning"
@@ -61,7 +61,7 @@ weights: [1.0,1.0,1.5] # cross entropy loss weights (must be floats)
 # increase z couple spacing or ratio to increase the number of between beads
 # try focal loss
 # changing input z slices
-initial_phase_mask: "axicon"
+initial_phase_mask: "empty"
 bessel_cone_angle_degrees: 3.0
 focal_length_2: 1.0e-3  # [m] focal length of the second lens
 angular_spectrum_method: True

@@ -234,8 +234,9 @@ class Normalize01(nn.Module):
 # ===================================================
 
 class PhysicalLayer(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, initial_phase_mask = None):
         super(PhysicalLayer, self).__init__()
+        
         #unpack the config
         self.config = config
         self.bfp_dir = config["bfp_dir"]
@@ -567,8 +568,8 @@ class PhysicalLayer(nn.Module):
 
         return U1_intensity
     
-    def against_lens(self, mask_param):
-        Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
+    def against_lens(self):
+        Ta = torch.exp(1j * self.phase_mask) # amplitude transmittance (in our case the slm reflectance)
         Ta = Ta[None, None, :] 
         Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
         #Uo = Uo[None, None, :] # not sure why mani did this?
@@ -579,8 +580,8 @@ class PhysicalLayer(nn.Module):
         output_layer = Uf[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
         return output_layer
 
-    def fourier_lens(self, mask_param):
-        Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
+    def fourier_lens(self):
+        Ta = torch.exp(1j * self.phase_mask) # amplitude transmittance (in our case the slm reflectance)
         Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
         Ul = self.angular_spectrum_propagation(Uo, self.focal_length) # light directly infront of the lens
         Ul_prime = Ul * self.B1 # light after the lens
@@ -588,16 +589,15 @@ class PhysicalLayer(nn.Module):
         output_layer = Uf[None, None, :, :] # light at the back focal plane of the lens
         return output_layer
 
-    def lensless(self, mask_param):
-        Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
+    def lensless(self):
+        Ta = torch.exp(1j * self.phase_mask) # amplitude transmittance (in our case the slm reflectance)
         Ta = Ta[None, None, :]
         Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
         output_layer = Uo
         return output_layer
 
-    def fourf(self, mask_param):
-        
-        Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
+    def fourf(self):
+        Ta = torch.exp(1j * self.phase_mask) # amplitude transmittance (in our case the slm reflectance)
         Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
         Ul1 = self.angular_spectrum_propagation(Uo, self.focal_length, debug = False) # light directly infront of the lens
         Ul1_prime = Ul1 * self.B1 # light after the lens
@@ -607,43 +607,7 @@ class PhysicalLayer(nn.Module):
         Uf2 = self.angular_spectrum_propagation(Ul2_prime, self.focal_length_2, debug = False) # light at the back focal plane of the lens
         output_layer = Uf2[None, None, :, :] # light at the back focal plane of the lens
         
-        """
-        Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
-        Ta = Ta[None, None, :]
-        Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
-        Uo_pad = F.pad(Uo, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-        #Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad)) # fourier spectrum of the light directly after the SLM
-        #Fl = Fo * self.H # propogated through free space from the SLM to a plane directly incident on the lens
-        Ul = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1)) # light directly incident of the lens
-        Ul_cropped = Ul[:, :, -self.N:, -self.N:]
-        if self.aperature == True:
-            Ul_cropped = self.circular_aperature(Ul_cropped,self.device)
-        #Ul_cropped = Ul[-self.N:, -self.N:]
-        Ul_prime = Ul_cropped * self.B1 # light after the lens
-        Ul_prime_pad = F.pad(Ul_prime, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-        Uf = torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1)) # light at the back focal plane of the lens   
-        Uf_cropped = Uf[:, :, -self.N:, -self.N:]
-        # continue to progoate the light to and through the 2nd lens ot the bfp of the 2nd lens
-        
-        # Extract the cropped Fourier plane field (Uf)
-        # Assuming Uf has 2*N x 2*N after padding, so we take the central N x N for processing
-        #Uf_cropped = Uf[:, :, self.N:2*self.N, self.N:2*self.N]
-
-        # 1. Propagate from BFP of L1 (Fourier plane) to FFP of L2 (distance f1)
-        U_before_L2_pad = F.pad(Uf_cropped, (0, self.N, 0, self.N), 'constant', 0) # Pad for FFT
-        U_before_L2 = torch.fft.ifft2(torch.fft.fft2(U_before_L2_pad) * torch.fft.fft2(self.Q1)) # Uses Q1 (for f1)
-
-        # 2. Apply the phase transformation of the second lens (self.B2)
-        U_after_L2_cropped = U_before_L2[:, :, -self.N:, -self.N:] # Crop after propagation
-        U_after_L2_prime = U_after_L2_cropped * self.B2 # Light after the 2nd lens
-
-        # 3. Propagate from the 2nd lens to its BFP (the output plane of the 4f system) (distance f2)
-        U_after_L2_prime_pad = F.pad(U_after_L2_prime, (0, self.N, 0, self.N), 'constant', 0) # Pad for FFT
-        U_output_4f = torch.fft.ifft2(torch.fft.fft2(U_after_L2_prime_pad) * torch.fft.fft2(self.Q2)) # Uses Q2 (for f2)
-
-        # Final output of the 4f system (cropped BFP of the 2nd lens)
-        output_layer = U_output_4f[:, :, -self.N:, -self.N:]
-        """
+       
         return output_layer
     
 
@@ -740,12 +704,12 @@ class PhysicalLayer(nn.Module):
         return cross_section_profile
 
 
-    def forward(self, mask_param, xyz):
-
+    def forward(self, phase_mask, xyz):
+        self.phase_mask = nn.Parameter(phase_mask)
         Nbatch, Nemitters = xyz.shape[0], xyz.shape[1]
         
         if self.lens_approach == 'fresnel':
-            mask_param = self.incident_gaussian * torch.exp(1j * mask_param)
+            mask_param = self.incident_gaussian * torch.exp(1j * self.phase_mask)
             mask_param = mask_param[None, None, :]
             #multiply the mask with the phase function of the lens (B1)
             B1 = self.B1 * mask_param
@@ -759,86 +723,22 @@ class PhysicalLayer(nn.Module):
             output_layer = E2[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
         
         elif self.lens_approach == 'against_lens':
-            output_layer = self.against_lens(mask_param)
+            output_layer = self.against_lens()
             
         elif self.lens_approach == 'fourier_lens' or self.lens_approach == 'convolution':
-            output_layer = self.fourier_lens(mask_param)
-            """ Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
-            Ta = Ta[None, None, :]
-            Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
-            Uo_pad = F.pad(Uo, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-            #Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad)) # fourier spectrum of the light directly after the SLM
-            #Fl = Fo * self.H # propogated through free space from the SLM to a plane directly incident on the lens
-            Ul = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1)) # light directly infront of the lens
-            Ul_cropped = Ul[:, :, -self.N:, -self.N:]
-            if self.aperature == True:
-                Ul_cropped = circular_aperature(Ul_cropped,self.device)
-            #Ul_cropped = Ul[-self.N:, -self.N:]
-            Ul_prime = Ul_cropped * self.B1 # light after the lens
-            Ul_prime_pad = F.pad(Ul_prime, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-            Uf = torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1)) # light at the back focal plane of the lens   
-            output_layer = Uf[:, :, -self.N:, -self.N:]
-            #output_layer = Uf[-self.N:, -self.N:] """
+            output_layer = self.fourier_lens()
+
             
         elif self.lens_approach == 'lensless':
-            output_layer = self.lensless(mask_param)
+            output_layer = self.lensless()
             # propagate to 1mm or 1e3 pixels infront of lens
             output_layer = self.angular_spectrum_propagation(output_layer, 1.0e3) # 1mm infront of lens
-            #Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
-            #Ta = Ta[None, None, :]
-            #Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
-            """ Uo_pad = F.pad(Uo, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-            #Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad)) # fourier spectrum of the light directly after the SLM
-            #Fl = Fo * self.H # propogated through free space from the SLM to a plane directly incident on the lens
-            Ul = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1)) # light directly infront of the lens
-            Ul_cropped = Ul[:, :, -self.N:, -self.N:]
-            if self.aperature == True:
-                Ul_cropped = circular_aperature(Ul_cropped,self.device)
-            #Ul_cropped = Ul[-self.N:, -self.N:]
-            Ul_prime = Ul_cropped * self.B1 # light after the lens
-            Ul_prime_pad = F.pad(Ul_prime, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-            Uf = torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1)) # light at the back focal plane of the lens   
-            output_layer = Uf[:, :, -self.N:, -self.N:] """
+
 
             
         elif self.lens_approach == '4f':
-            output_layer = self.fourf(mask_param)
+            output_layer = self.fourf()
             
-            """ Ta = torch.exp(1j * mask_param) # amplitude transmittance (in our case the slm reflectance)
-            Ta = Ta[None, None, :]
-            Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
-            Uo_pad = F.pad(Uo, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-            #Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad)) # fourier spectrum of the light directly after the SLM
-            #Fl = Fo * self.H # propogated through free space from the SLM to a plane directly incident on the lens
-            Ul = torch.fft.ifft2(torch.fft.fft2(Uo_pad) * torch.fft.fft2(self.Q1)) # light directly incident of the lens
-            Ul_cropped = Ul[:, :, -self.N:, -self.N:]
-            if self.aperature == True:
-                Ul_cropped = circular_aperature(Ul_cropped,self.device)
-            #Ul_cropped = Ul[-self.N:, -self.N:]
-            Ul_prime = Ul_cropped * self.B1 # light after the lens
-            Ul_prime_pad = F.pad(Ul_prime, (0, self.N, 0, self.N), 'constant', 0) # padded to interpolate with fft
-            Uf = torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1)) # light at the back focal plane of the lens   
-            Uf_cropped = Uf[:, :, -self.N:, -self.N:]
-            # continue to progoate the light to and through the 2nd lens ot the bfp of the 2nd lens
-            
-            # Extract the cropped Fourier plane field (Uf)
-            # Assuming Uf has 2*N x 2*N after padding, so we take the central N x N for processing
-            #Uf_cropped = Uf[:, :, self.N:2*self.N, self.N:2*self.N]
-
-            # 1. Propagate from BFP of L1 (Fourier plane) to FFP of L2 (distance f1)
-            U_before_L2_pad = F.pad(Uf_cropped, (0, self.N, 0, self.N), 'constant', 0) # Pad for FFT
-            U_before_L2 = torch.fft.ifft2(torch.fft.fft2(U_before_L2_pad) * torch.fft.fft2(self.Q1)) # Uses Q1 (for f1)
-
-            # 2. Apply the phase transformation of the second lens (self.B2)
-            U_after_L2_cropped = U_before_L2[:, :, -self.N, -self.N] # Crop after propagation
-            U_after_L2_prime = U_after_L2_cropped * self.B2 # Light after the 2nd lens
-
-            # 3. Propagate from the 2nd lens to its BFP (the output plane of the 4f system) (distance f2)
-            U_after_L2_prime_pad = F.pad(U_after_L2_prime, (0, self.N, 0, self.N), 'constant', 0) # Pad for FFT
-            U_output_4f = torch.fft.ifft2(torch.fft.fft2(U_after_L2_prime_pad) * torch.fft.fft2(self.Q2)) # Uses Q2 (for f2)
-
-            # Final output of the 4f system (cropped BFP of the 2nd lens)
-            output_layer = U_output_4f[:, :, -self.N, -self.N] """
         
         else:
             raise ValueError('lens approach not supported')
