@@ -6,11 +6,11 @@ import skimage.io
 import torch
 from torch import nn
 from datetime import datetime
-from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid, img_save_tiff, find_image_with_wildcard, batch_xyz_to_3_class_grid, save_3d_volume_as_tiffs, batch_xyz_to_3class_volume
+from data_utils import load_config, makedirs, batch_xyz_to_boolean_grid, img_save_tiff, find_image_with_wildcard, batch_xyz_to_3_class_grid, save_3d_volume_as_tiffs, batch_xyz_to_3class_volume, save_png
 from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
 from physics_utils import PhysicalLayer  # physical model import
-from beam_profile_gen import beam_profile_focus, beam_section, phase_mask_gen
+#from beam_profile_gen import beam_profile_focus, beam_section, phase_mask_gen
 from metrics import compute_and_log_metrics, save_heatmap
 import matplotlib.pyplot as plt
 
@@ -71,7 +71,7 @@ def main():
         # x is an integer that begins at 0 and increases by 1.
         x0 = int((args.epoch - 1) / 10)
         candidate_low = x0 * 10 + 1
-        candidate_high = (x0 + 1) * 10 + 1
+        candidate_high = (x0 + 1) * 10 
         if abs(args.epoch - candidate_low) <= abs(candidate_high - args.epoch):
             chosen_epoch = candidate_low
         else:
@@ -148,7 +148,7 @@ def main():
     dt_str = datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir = os.path.join(args.res_dir, dt_str)
     # create dir if it does not exist
-    print(f"Creating output directory: {out_dir}")
+    print(f"Output directory: {out_dir}")
     if not os.path.exists(out_dir):
         print(f"Output directory {out_dir} does not exist, creating it.")
         makedirs(out_dir)
@@ -176,11 +176,13 @@ def main():
         for batch, value in config.items():
             f.write(f"{batch}: {value}\n")
     
-    input_mask_path = os.path.join(out_dir, "input_mask.tiff")
-    skimage.io.imsave(input_mask_path, mask_np)
-    print(f"Saved input mask to {input_mask_path}")
+    #input_mask_path = os.path.join(out_dir, "input_mask.tiff")
+    save_png(mask_np, out_dir, "input_mask", config)
+    #skimage.io.imsave(input_mask_path, mask_np)
+    print(f"Saved input mask")
         
     # Generate and save beam profile for the input mask
+    """
     if args.generate_beam_profile:
         beam_3d_sections_filepath = os.path.join(out_dir, args.beam_3d_sections)
         if not os.path.exists(beam_3d_sections_filepath):
@@ -195,7 +197,7 @@ def main():
         beam_profile_out_path = os.path.join(out_dir, "beam_profile.png")
         skimage.io.imsave(beam_profile_out_path, (beam_profile/1e6).astype(np.uint16))
         print(f"Saved beam profile for input mask to {beam_profile_out_path}")
-
+    """
     # Run inference for each selected key
     for batch in selected_keys:
         data = labels_dict[batch]
@@ -204,16 +206,19 @@ def main():
         xyz_between_beads = data['xyz_between_beads']
 
         # Physical layer inference
-        phys_img = run_inference(phys_model, mask_param, xyz)
-        img_save_tiff(phys_img[display_batch], out_dir, "learned_mask_camera", batch)
+        camera = run_inference(phys_model, mask_param, xyz)
+        save_png(camera[display_batch], out_dir, "camera", config)
+        img_save_tiff(camera[display_batch], out_dir, "learned_mask_camera", batch)
 
         # CNN layer inference
         num_classes = config['num_classes']
         if num_classes == 1:
             cnn_img = run_inference(cnn_model, mask_param, xyz, 'cnn')
+            save_png(cnn_img[0], out_dir, "inference_cnn", config)  
             img_save_tiff(cnn_img[0], out_dir, "inference_cnn", batch)
         if num_classes == 3:
             cnn_img = run_inference(cnn_model, mask_param, xyz, 'cnn_3_class')
+            save_png(cnn_img[0], out_dir, "inference_cnn", config, True)
             img_save_tiff(cnn_img[0], out_dir, "inference_cnn", batch, True)
 
         # Save ground truth
@@ -221,6 +226,7 @@ def main():
             gt_img = batch_xyz_to_boolean_grid(xyz_np, config)
             if torch.is_tensor(gt_img):
                 gt_img = gt_img.detach().squeeze().cpu().numpy()
+            save_png(gt_img[0].astype(np.uint8), out_dir, "ground_truth", config)
             img_save_tiff(gt_img[0].astype(np.uint8), out_dir, "ground_truth", batch)
             # Compute metrics for binary
             compute_and_log_metrics(gt_img[0], cnn_img[0], out_dir, f"batch_{batch}", num_classes=2)

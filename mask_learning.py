@@ -13,7 +13,7 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import pickle
 from psf_gen import apply_blur_kernel
-from data_utils import PhasesOnlineDataset, savePhaseMask, generate_batch, load_config, makedirs
+from data_utils import PhasesOnlineDataset, savePhaseMask, generate_batch, load_config, makedirs, save_png
 from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
 from loss_utils import KDE_loss3D, jaccard_coeff
@@ -174,6 +174,7 @@ def learn_mask(config,res_dir):
     mask_phase = torch.from_numpy(mask_phase).type(torch.FloatTensor).to(device)
     mask_param = nn.Parameter(mask_phase)
     mask_param.requires_grad_()
+    save_png(mask_param.detach(), res_dir, "initial_phase_mask", config)
 
     # I don't know what goes in here so I commented it out - ryan
     #if not (os.path.isdir(path_save)):
@@ -324,10 +325,11 @@ def learn_mask(config,res_dir):
         optimizer.step()        
         train_losses.append(train_loss)
         np.savetxt(os.path.join(res_dir,'train_losses.txt'),train_losses,delimiter=',')
-        if epoch % 10 == 0:
+        if epoch % 1 == 0:
             torch.save(cnn.state_dict(),os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
+        save_png(mask_param.detach(), res_dir, str(epoch).zfill(3), config)
         savePhaseMask(mask_param, batch_index, epoch, res_dir)
-    torch.save(cnn.state_dict(),os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
+    torch.save(cnn.state_dict(), os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
     return labels
 
 if __name__ == '__main__':

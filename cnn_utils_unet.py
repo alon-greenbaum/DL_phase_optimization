@@ -118,7 +118,7 @@ class OpticsDesignUnet(nn.Module):
 
     def forward(self, mask, xyz):
         im = self.physicalLayer(mask, xyz)
-        im = self.norm(im)
+        #im = self.norm(im)
 
         # im_test = im[0,0,:,:]
         # plt.imshow(im_test.detach().numpy())

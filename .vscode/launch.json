@@ -9,10 +9,10 @@
             "console": "integratedTerminal",
             "args": [
                 "--input_dir",
-                "./training_results/phase_model_20250610-134114",
+                "./training_results/phase_model_20250620-170404",
                 //"./training_results/phase_model_20250508-165157/",
                 "--epoch",
-                "1",
+                "100",
                 "--res_dir",
                 "inference_results",
                 "--num_inferences",
@@ -25,7 +25,7 @@
                 //"--no_noise",
                 //"--max_intensity",
                 //"8.0e+10", // 5e4, 5e10
-                "--generate_beam_profile",
+                //"--generate_beam_profile",
                 //"--bead_volume",
                 //"--plot_train_loss"
 

@@ -11,6 +11,7 @@ import yaml
 import os
 import datetime
 import glob
+import matplotlib.pyplot as plt
 
 
 # ======================================================================================================================
@@ -104,6 +105,57 @@ def img_save_tiff(img, out_dir, name, key=None, as_rgb=False, as_rgb_channels=Fa
         print(f"Saved {name} to {base_path}")
     else:
         print(f"Unexpected dimensions for phys_img: {img.shape}")
+    
+def normalize_to_uint16(img: np.ndarray) -> np.ndarray:
+        """
+        Normalizes a numpy array to the uint16 range [0, 65535].
+        
+        Args:
+            img (np.ndarray): The input image array.
+            
+        Returns:
+            np.ndarray: The normalized image as a uint16 array.
+        """
+        # if tesnor convert to numpy 
+        if isinstance(img, torch.Tensor):
+            img = img.cpu().numpy()
+        # Ensure the image is in float format for normalization
+        img_float = img.astype(np.float64)
+        img_float -= img_float.min()
+        max_val = img_float.max()
+        if max_val > 0:
+            img_float /= max_val
+        return (img_float * 65535).astype(np.uint16)
+ 
+def save_png(image, output_dir, title, config):
+    """
+    Saves a given image as a PNG file with a formatted title and colorbar.
+    Parameters:
+        image (numpy.ndarray): The image data to be saved.
+        title (str): The title to display on the image.
+        output_dir (str): Directory where the PNG file will be saved.
+        timestamp (str): Timestamp string to include in the image title.
+    Notes:
+        - The function saves the image as 'beam_profile.png' in the specified output directory.
+        - The image is normalized to uint16 and displayed using the 'hot' colormap.
+    """
+    # replace title spaces with underscores
+    title = title.replace(" ", "_")
+    png_path = os.path.join(output_dir, f"{title}.png")
+    plt.figure(figsize=(5, 10))
+    plt.imshow(normalize_to_uint16(image), cmap='hot', aspect='equal')
+    plt.colorbar()
+    plt.title(
+        f"{title}\n"
+        #f"Timestamp: {timestamp}\n"
+        #f"axicon angle={bessel_angle}°, \n"
+        f"lens={config['lens_approach']}, \n"
+        f"Pixel size: {config['px']*10**6:.2f} um\n"
+        f"FWHM: {config['laser_beam_FWHC']*10**6:.2f} um"
+        )
+    plt.tight_layout()
+    plt.savefig(png_path)
+    print(f"Saved {title} as PNG to {png_path}")
          
 def find_image_with_wildcard(directory, filename_prefix, file_type):
     """
@@ -243,7 +295,7 @@ def batch_xyz_to_boolean_grid(xyz_np, config):
     for i in range(batch_size):
         for j in range(num_particles):
             z = xyz_np[i, j, 2]
-            if -z_range_cost_function[0] <= z <= z_range_cost_function[1]:
+            if z_range_cost_function[0] <= z <= z_range_cost_function[1]:
                 x = xyz_np[i, j, 0]
                 y = xyz_np[i, j, 1]
                 boolean_grid[i, 0, int(x // ratio_input_output_image_size), int(y // ratio_input_output_image_size)] = 1

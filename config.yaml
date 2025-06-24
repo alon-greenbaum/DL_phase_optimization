@@ -1,4 +1,4 @@
-ntrain: 10000  # default 10000 how many bead volumes per epoch
+ntrain: 500  # default 10000 how many bead volumes per epoch
 nvalid: 1  # default 1000
 batch_size_gen: 2  # default 2
 # Number of emitters per image
@@ -71,3 +71,14 @@ z_max_mm: 2.0          # Maximum z-position for beam profile in millimeters
 y_min_mm: -0.05          # Minimum y-position for beam profile in millimeters
 y_max_mm: 0.05        # Maximum y-position for beam profile in millimeters
 num_z_steps: 1000        # Number of simulation steps/planes across the z-range
+
+
+# camera noise parameters
+quantum_efficiency: 0.85     # Quantum efficiency (0-1)
+dark_current_mean: 50        # Increased: Mean dark current electrons per pixel (for more visible dark noise)
+read_noise_std: 100          # Significantly increased: Read noise standard deviation in electrons RMS (for more visible constant noise)
+camera_gain: 0.7             # Camera gain (electrons per ADU)
+camera_max_adu: 65535         # Maximum ADU value (e.g., 2^12 - 1 for 12-bit)
+
+
+illumination_scaling_factor: 1.0e-2 # Scaling factor for the illumination intensity
