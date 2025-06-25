@@ -1,4 +1,4 @@
-ntrain: 500  # default 10000 how many bead volumes per epoch
+ntrain: 1000  # default 10000 how many bead volumes per epoch
 nvalid: 1  # default 1000
 batch_size_gen: 2  # default 2
 # Number of emitters per image
@@ -61,7 +61,7 @@ weights: [1.0,1.0,1.5] # cross entropy loss weights (must be floats)
 # increase z couple spacing or ratio to increase the number of between beads
 # try focal loss
 # changing input z slices
-initial_phase_mask: "empty"
+initial_phase_mask: "axicon"
 bessel_cone_angle_degrees: 3.0
 focal_length_2: 1.0e-3  # [m] focal length of the second lens
 angular_spectrum_method: True

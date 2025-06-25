@@ -171,10 +171,11 @@ def learn_mask(config,res_dir):
         )
     else:
         mask_phase = np.zeros((mask_phase_pixels,mask_phase_pixels))
+    save_png(mask_phase, res_dir, "initial_phase_mask", config)
     mask_phase = torch.from_numpy(mask_phase).type(torch.FloatTensor).to(device)
     mask_param = nn.Parameter(mask_phase)
     mask_param.requires_grad_()
-    save_png(mask_param.detach(), res_dir, "initial_phase_mask", config)
+    
 
     # I don't know what goes in here so I commented it out - ryan
     #if not (os.path.isdir(path_save)):
@@ -307,10 +308,22 @@ def learn_mask(config,res_dir):
                 loss = criterion(outputs, targets)
                 
                 loss.backward(retain_graph=True)
-                optimizer.step() # modified to use the learning rate scheduler
-                
-                #return loss
-                
+                optimizer.step() 
+                """
+                # --- Add this section to inspect gradients ---
+                if mask_param.grad is not None:
+                    print(f"Epoch {epoch+1}, Batch {batch_index+1}:")
+                    print(f"  mask_param grad min: {mask_param.grad.min().item():.6f}")
+                    print(f"  mask_param grad max: {mask_param.grad.max().item():.6f}")
+                    print(f"  mask_param grad mean: {mask_param.grad.mean().item():.6f}")
+                    print(f"  mask_param grad std: {mask_param.grad.std().item():.6f}")
+                    # Optionally, check if all gradients are extremely small
+                    if torch.allclose(mask_param.grad, torch.zeros_like(mask_param.grad), atol=1e-8):
+                        print("  Warning: All mask_param gradients are very close to zero!")
+                else:
+                    print(f"Epoch {epoch+1}, Batch {batch_index+1}: mask_param.grad is None. This indicates a detached tensor or no gradient flow.")
+                # --- End of gradient inspection section ---
+                """
                 # running statistics
                 train_loss += loss.item()
                 #jacc_ind = jaccard_coeff(outputs,targets)
@@ -321,13 +334,13 @@ def learn_mask(config,res_dir):
                       num_epochs, batch_index+1, steps_per_epoch, loss.item()))
                 
                 #if batch_ind % 1000 == 0:
-                #    savePhaseMask(mask_param,batch_ind,epoch,res_dir)
-        optimizer.step()        
+                #    savePhaseMask(mask_param,batch_ind,epoch,res_dir)       
         train_losses.append(train_loss)
         np.savetxt(os.path.join(res_dir,'train_losses.txt'),train_losses,delimiter=',')
         if epoch % 1 == 0:
             torch.save(cnn.state_dict(),os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
         save_png(mask_param.detach(), res_dir, str(epoch).zfill(3), config)
+       #save_png(mask_param, res_dir, str(epoch).zfill(3), config)
         savePhaseMask(mask_param, batch_index, epoch, res_dir)
     torch.save(cnn.state_dict(), os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
     return labels
