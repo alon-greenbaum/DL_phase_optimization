@@ -261,6 +261,7 @@ class PhysicalLayer(nn.Module):
         self.focal_length_2 = config['focal_length_2']  # for 4f approach
         self.illumination_scaling_factor = config.get('illumination_scaling_factor')  # scaling factor for the illumination
         self.camera_max_adu = config.get('camera_max_adu')  # maximum ADU for the camera
+        self.lenless_prop_distance = config.get('lenless_prop_distance', 1.0e-3)  # distance for lensless propagation
             
         #self.power_2 = config['power_2']
         #self.pad_to_power_2 = self.power_2-N
@@ -577,9 +578,9 @@ class PhysicalLayer(nn.Module):
     def fourier_lens(self, phase_mask):
         Ta = torch.exp(1j * phase_mask) # amplitude transmittance (in our case the slm reflectance)
         Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
-        Ul = self.angular_spectrum_propagation(Uo, self.focal_length) # light directly infront of the lens
+        Ul = self.angular_spectrum_propagation(Uo, self.focal_length/self.px) # light directly infront of the lens
         Ul_prime = Ul * self.B1 # light after the lens
-        Uf = self.angular_spectrum_propagation(Ul_prime, self.focal_length) # light at the back focal plane of the lens
+        Uf = self.angular_spectrum_propagation(Ul_prime, self.focal_length/self.px) # light at the back focal plane of the lens
         output_layer = Uf[None, None, :, :] # light at the back focal plane of the lens
         return output_layer
 
@@ -593,12 +594,12 @@ class PhysicalLayer(nn.Module):
     def fourf(self, phase_mask):
         Ta = torch.exp(1j * phase_mask) # amplitude transmittance (in our case the slm reflectance)
         Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
-        Ul1 = self.angular_spectrum_propagation(Uo, self.focal_length, debug = False) # light directly infront of the lens
+        Ul1 = self.angular_spectrum_propagation(Uo, self.focal_length/self.px, debug = False) # light directly infront of the lens
         Ul1_prime = Ul1 * self.B1 # light after the lens
-        Ul2 = self.angular_spectrum_propagation(Ul1_prime, self.focal_length+self.focal_length_2, debug = False) # light at the back focal plane of the lens
+        Ul2 = self.angular_spectrum_propagation(Ul1_prime, (self.focal_length+self.focal_length_2)/self.px, debug = False) # light at the back focal plane of the lens
         #Ul2 = self.angular_spectrum_propagation(Uf1, self.focal_length_2) # light directly infront of the lens
         Ul2_prime = Ul2 * self.B2 # light after the 2nd lens
-        Uf2 = self.angular_spectrum_propagation(Ul2_prime, self.focal_length_2, debug = False) # light at the back focal plane of the lens
+        Uf2 = self.angular_spectrum_propagation(Ul2_prime, self.focal_length_2/self.px, debug = False) # light at the back focal plane of the lens
         output_layer = Uf2[None, None, :, :] # light at the back focal plane of the lens
         
        
@@ -724,7 +725,7 @@ class PhysicalLayer(nn.Module):
         elif self.lens_approach == 'lensless':
             output_layer = self.lensless(phase_mask)
             # propagate to 1mm or 1e3 pixels infront of lens
-            output_layer = self.angular_spectrum_propagation(output_layer, 1.0e3) # 1mm infront of lens
+            output_layer = self.angular_spectrum_propagation(output_layer, self.lenless_prop_distance * self.px) # 1mm infront of lens
 
 
             

@@ -142,7 +142,7 @@ def save_png(image, output_dir, title, config):
     # replace title spaces with underscores
     title = title.replace(" ", "_")
     png_path = os.path.join(output_dir, f"{title}.png")
-    plt.figure(figsize=(5, 10))
+    plt.figure(figsize=(image.shape[1] / 30, image.shape[0] / 30))
     plt.imshow(normalize_to_uint16(image), cmap='hot', aspect='equal')
     plt.colorbar()
     plt.title(

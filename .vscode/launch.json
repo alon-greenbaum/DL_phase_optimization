@@ -2,99 +2,38 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Mask Inference with fixed args",
+            "name": "Mask Inference",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/mask_inference.py",
             "console": "integratedTerminal",
             "args": [
                 "--input_dir",
-                "./training_results/phase_model_20250624-150948",
+                "./training_results/phase_model_20250625-184437",
                 //"./training_results/phase_model_20250508-165157/",
                 "--epoch",
-                "50",
+                "200",
                 "--res_dir",
                 "inference_results",
                 "--num_inferences",
-                "1",
+                "10",
                 //"--lens_approach",
                 //"fresnel",
-                //"--empty_mask",
-                //"--paper_mask",
-                //"example_optimized_phase.tiff",
+                "--empty_mask",
+                "--paper_mask",
+                "example_optimized_phase.tiff",
                 //"--no_noise",
                 //"--max_intensity",
                 //"8.0e+10", // 5e4, 5e10
                 //"--generate_beam_profile",
                 //"--bead_volume",
-                //"--plot_train_loss"
+                "--plot_train_loss"
 
 
             ]
         },
         {
-            "name": "Physics_inference with fixed args",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/physics_inference.py",
-            "console": "integratedTerminal",
-            "args": [
-                "--input_dir",
-                "training_results/phase_model_20250212-123823",
-                "--epoch",
-                "1",
-                "--res_dir",
-                "physics_inference_results",
-                "--num_inferences",
-                "1",
-                "--lens_approach",
-                "convolution",
-                "--empty_mask",
-                //"--paper_mask",
-                //"example_optimized_phase.tiff",
-                //"--img_at_end_epoch"
-                "--no_noise",
-            ]
-        },
-        {
-            "name": "CNN_inference with fixed args",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/cnn_inference.py",
-            "console": "integratedTerminal",
-            "args": [
-                "--input_dir",
-                "./training_results/phase_model_20250212-123823/",  // modify as needed
-                "--epoch",
-                "191",
-                "--res_dir",
-                "cnn_inference_results",
-                "--num_inferences",
-                "10",
-            ]
-        },
-        {
-            "name": "Beam profile with fixed args",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/beam_profile_ryan.py",
-            "console": "integratedTerminal",
-            "args": [
-                "--input_dir",
-                "./training_results/phase_model_20250312-112724/",
-                "--epoch",
-                "75",
-                //"--mask_filepath",
-                //"training_results/phase_model_20250219-171134/mask_phase_epoch_100_499.tiff",
-                //"example_optimized_phase.tiff",
-                "--x_min",
-                "-100",
-                "--x_max",
-                "100",
-            ]
-        },
-        {
-            "name": "Python: Test Beam Profile (Axicon)",
+            "name": "Beam Profiler",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/beam_profiler.py",
@@ -102,6 +41,7 @@
             "args": [
                 "--config", "config.yaml",
                 "--output_dir", "beam_axicon",
+                //"--mask", "/home/regarry/dd_phase_optimization/training_results/phase_model_20250625-142441/mask_phase_epoch_149_499.tiff"
                 //"--fresnel_lens_pattern"
             ]
         }

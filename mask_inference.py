@@ -81,7 +81,7 @@ def main():
         print(f"Automatically using CNN model: {args.model_path}")
         
     
-    display_batch = 0  # Display the first image in the batch
+    display = 0  # Display the first image in the batch
     
     # Load configuration and set device
     config_path = os.path.join(args.input_dir, "config.yaml")
@@ -165,6 +165,7 @@ def main():
             plt.xlabel("Epoch or Iteration")
             plt.ylabel("Loss")
             plt.title("Training Loss Over Time")
+            plt.yscale("log")
             plt.legend()
             save_path = os.path.join(out_dir, "train_loss.png")
             plt.savefig(save_path)
@@ -207,49 +208,54 @@ def main():
 
         # Physical layer inference
         camera = run_inference(phys_model, mask_param, xyz)
-        save_png(camera[display_batch], out_dir, "camera", config)
-        img_save_tiff(camera[display_batch], out_dir, "learned_mask_camera", batch)
+        save_png(camera[display], out_dir, f"camera_{batch}", config)
+        img_save_tiff(camera[display], out_dir, "learned_mask_camera", batch)
 
         # CNN layer inference
         num_classes = config['num_classes']
         if num_classes == 1:
             cnn_img = run_inference(cnn_model, mask_param, xyz, 'cnn')
-            save_png(cnn_img[0], out_dir, "inference_cnn", config)  
-            img_save_tiff(cnn_img[0], out_dir, "inference_cnn", batch)
+            img_save_tiff(cnn_img[display], out_dir, "inference_cnn", batch)
+       
         if num_classes == 3:
             cnn_img = run_inference(cnn_model, mask_param, xyz, 'cnn_3_class')
-            save_png(cnn_img[0], out_dir, "inference_cnn", config, True)
-            img_save_tiff(cnn_img[0], out_dir, "inference_cnn", batch, True)
-
+            img_save_tiff(cnn_img[display], out_dir, "inference_cnn", batch, True)
+       
+        save_png(cnn_img[display], out_dir, f"inference_cnn_{batch}", config) 
+        
         # Save ground truth
         if num_classes == 1:
             gt_img = batch_xyz_to_boolean_grid(xyz_np, config)
             if torch.is_tensor(gt_img):
                 gt_img = gt_img.detach().squeeze().cpu().numpy()
-            save_png(gt_img[0].astype(np.uint8), out_dir, "ground_truth", config)
-            img_save_tiff(gt_img[0].astype(np.uint8), out_dir, "ground_truth", batch)
+            
+            img_save_tiff(gt_img[display].astype(np.uint8), out_dir, "ground_truth", batch)
             # Compute metrics for binary
-            compute_and_log_metrics(gt_img[0], cnn_img[0], out_dir, f"batch_{batch}", num_classes=2)
+            compute_and_log_metrics(gt_img[display], cnn_img[display], out_dir, f"batch_{batch}", num_classes=2)
         if num_classes == 3: 
             gt_img = batch_xyz_to_3_class_grid(xyz, xyz_between_beads, config)  
             gt_img = gt_img.squeeze(1)
-            img_save_tiff(gt_img[0].astype(np.uint8), out_dir, "ground_truth", batch, True)
+            img_save_tiff(gt_img[display].astype(np.uint8), out_dir, "ground_truth", batch, True)
             # Compute metrics for 3-class
-            compute_and_log_metrics(gt_img[0], cnn_img[0], out_dir, f"batch_{batch}", num_classes=3)
+            compute_and_log_metrics(gt_img[display], cnn_img[display], out_dir, f"batch_{batch}", num_classes=3)
 
+        save_png(gt_img[display], out_dir, f"ground_truth_{batch}", config)
+        
         # Empty mask inference
         if args.empty_mask:
             empty_mask_tensor = torch.zeros_like(mask_tensor)
             empty_mask_param = torch.nn.Parameter(empty_mask_tensor, requires_grad=False)
             empty_phys_img = run_inference(phys_model, empty_mask_param, xyz)
-            img_save_tiff(empty_phys_img[display_batch], out_dir, "empty_mask_camera", batch)
+            img_save_tiff(empty_phys_img[display], out_dir, "empty_mask_camera", batch)
             if num_classes == 1:
                 empty_cnn_img = run_inference(cnn_model, empty_mask_param, xyz, 'cnn')
-                img_save_tiff(empty_cnn_img[0], out_dir, "inference_empty_cnn", batch)
+                img_save_tiff(empty_cnn_img[display], out_dir, "inference_empty_cnn", batch)
             if num_classes == 3:
                 empty_cnn_img = run_inference(cnn_model, empty_mask_param, xyz, 'cnn_3_class')
-                img_save_tiff(empty_cnn_img[0], out_dir, "inference_empty_cnn", batch, True)
-            img_save_tiff(empty_phys_img[display_batch], out_dir, "empty_mask_camera", batch)
+                img_save_tiff(empty_cnn_img[display], out_dir, "inference_empty_cnn", batch, True)
+            save_png(empty_cnn_img[display], out_dir, f"inference_empty_cnn_{batch}", config)
+            save_png(empty_phys_img[display], out_dir, f"empty_mask_camera_{batch}", config)
+            img_save_tiff(empty_phys_img[display], out_dir, "empty_mask_camera", batch)
 
         if args.bead_volume:
             bead_vol = batch_xyz_to_3class_volume(xyz_np, xyz_between_beads, config)
@@ -262,14 +268,15 @@ def main():
         if args.paper_mask:
             paper_mask_param = paper_mask_param.to(config['device'])
             paper_phys_img = run_inference(phys_model, paper_mask_param, xyz)
-            img_save_tiff(paper_phys_img[display_batch], out_dir, "paper_mask_camera", batch)
+            img_save_tiff(paper_phys_img[display], out_dir, "paper_mask_camera", batch)
             if num_classes == 1:
                 paper_cnn_img = run_inference(cnn_model, paper_mask_param, xyz, 'cnn')
-                img_save_tiff(paper_cnn_img[0], out_dir, "inference_paper_cnn", batch)
+                img_save_tiff(paper_cnn_img[display], out_dir, "inference_paper_cnn", batch)
             if num_classes == 3:
                 paper_cnn_img = run_inference(cnn_model, paper_mask_param, xyz, 'cnn_3_class')
-                img_save_tiff(paper_cnn_img[0], out_dir, "inference_paper_cnn", batch, True)
-            
+                img_save_tiff(paper_cnn_img[display], out_dir, "inference_paper_cnn", batch, True)
+            save_png(paper_cnn_img[display], out_dir, f"inference_paper_cnn_{batch}", config)
+            save_png(paper_phys_img[display], out_dir, f"paper_mask_camera_{batch}", config)
             # Generate beam profile for paper mask
             if args.generate_beam_profile:
                 paper_mask_np_for_beam = paper_mask_tensor.cpu().numpy()

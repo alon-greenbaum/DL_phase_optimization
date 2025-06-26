@@ -5,7 +5,7 @@ import torch
 import skimage.io
 import matplotlib.pyplot as plt
 from datetime import datetime
-from data_utils import load_config
+from data_utils import load_config, normalize_to_uint16
 #from beam_profile_gen import BeamProfiler
 from bessel import generate_axicon_phase_mask
 from physics_utils import PhysicalLayer
@@ -15,7 +15,7 @@ def main():
     parser.add_argument("--config", type=str, required=True, help="Path to config.yaml")
     parser.add_argument("--mask", type=str, default="", help="Optional: path to phase mask tiff (default: zeros)")
     parser.add_argument("--output_dir", type=str, default="beam_profile_test", help="Output directory")
-    #parser.add_argument("--fresnel_lens_pattern", action="store_true", help="Use Fresnel lens phase mask")
+    parser.add_argument("--fresnel_lens_pattern", action="store_true", help="Use Fresnel lens phase mask")
     args = parser.parse_args()
 
     # Create a timestamped subfolder output dir
@@ -63,7 +63,13 @@ def main():
     # assert that either bessel_angle > 0 or args.fresnel_lens_pattern is True or args.mask is provided
     #if int(bessel_angle > 0) + int(bool(initial_phase_mask)) + int(bool(args.mask)) > 1:
     #    raise ValueError("Must specify either a Bessel cone angle, a Fresnel lens pattern, or a phase mask file.")
-    if bessel_angle > 0 and initial_phase_mask == "axicon":
+    if args.mask:
+        print(f"Loading phase mask from {args.mask}")
+        mask_np = skimage.io.imread(args.mask).astype(np.float32)
+        if mask_np.shape != (N, N):
+            raise ValueError(f"Loaded mask shape {mask_np.shape} does not match expected {(N, N)}")
+    
+    elif bessel_angle > 0 and initial_phase_mask == "axicon":
         print(f"Generating axicon phase mask: {N}x{N}, {px_um}um, {wavelength_nm}nm, angle={bessel_angle}deg")
         mask_np = generate_axicon_phase_mask(
             mask_resolution_pixels=(N, N),
@@ -71,12 +77,6 @@ def main():
             wavelength_nm=wavelength_nm,
             bessel_cone_angle_degrees=bessel_angle
         )
-        
-    elif args.mask:
-        print(f"Loading phase mask from {args.mask}")
-        mask_np = skimage.io.imread(args.mask).astype(np.float32)
-        if mask_np.shape != (N, N):
-            raise ValueError(f"Loaded mask shape {mask_np.shape} does not match expected {(N, N)}")
         
     elif initial_phase_mask == "fresnel_lens":
         print(f"Generating a Fresnel lens phase mask: {N}x{N}, {px_um}um, {wavelength_nm}nm, focal_length={config['focal_length']}m")
@@ -143,7 +143,7 @@ def main():
         # Save as PNG for easy viewing
         png_path = os.path.join(output_subdir, "beam_profile.png")
         plt.figure(figsize=(5, 10))
-        plt.imshow(phys_layer.normalize_to_uint16(beam_profile), cmap='hot', aspect='equal')
+        plt.imshow(normalize_to_uint16(beam_profile), cmap='hot', aspect='equal')
         plt.colorbar()
 
         # Set axis labels and ticks in mm
