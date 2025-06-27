@@ -566,12 +566,10 @@ class PhysicalLayer(nn.Module):
     def against_lens(self, phase_mask):
         Ta = torch.exp(1j * phase_mask) # amplitude transmittance (in our case the slm reflectance)
         Ta = Ta[None, None, :] 
-        Uo = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
-        #Uo = Uo[None, None, :] # not sure why mani did this?
-        Uo_pad = F.pad(Uo, (self.N//2, self.N//2, self.N//2, self.N//2), 'constant', 0) # padded to interpolate with fft
-        Fo = torch.fft.fftshift(torch.fft.fft2(Uo_pad)) # fourier spectrum of the light directly after the SLM
-        # can ignore a constant phase factor from goodman 1/(1j * self.wavelength * self.focal_length)
-        Uf = Fo # light at the back focal plane of the lens   
+        Ul = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
+        Ul_prime = Ul * self.B1 # light after the lens
+        Ul_prime_pad = F.pad(Ul_prime, (self.N//2, self.N//2, self.N//2, self.N//2), 'constant', 0) # padded to interpolate with fft
+        Uf = torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1))) # light at the back focal plane of the lens   
         output_layer = Uf[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
         return output_layer
 
@@ -725,7 +723,7 @@ class PhysicalLayer(nn.Module):
         elif self.lens_approach == 'lensless':
             output_layer = self.lensless(phase_mask)
             # propagate to 1mm or 1e3 pixels infront of lens
-            output_layer = self.angular_spectrum_propagation(output_layer, self.lenless_prop_distance * self.px) # 1mm infront of lens
+            output_layer = self.angular_spectrum_propagation(output_layer, self.lenless_prop_distance * self.px) # infront of lens
 
 
             

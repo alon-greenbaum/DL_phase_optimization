@@ -90,8 +90,8 @@ def main():
     config['inference_epoch'] = args.epoch
     if args.max_intensity:
         config['max_intensity'] = args.max_intensity
-    if args.lens_approach:
-        config['lens_approach'] = args.lens_approach
+    #if args.lens_approach:
+    #    config['lens_approach'] = args.lens_approach
     if args.no_noise:
         config['skip_noise'] = True
         
@@ -99,6 +99,7 @@ def main():
         config['px'] = float(config['px'])
         
     config["model_path"] = args.model_path
+    learned_lens_approach = config['lens_approach']
 
     # Load mask from tiff file (for both models)
     mask_path = find_image_with_wildcard(args.input_dir, f"mask_phase_epoch_{args.epoch-1}_", "tiff")
@@ -144,6 +145,27 @@ def main():
             print(layer.weight.shape)
     exit()
  """
+ 
+    if learned_lens_approach != 'fourier_lens' and (args.empty_mask or args.paper_mask):
+        fourier_lens_config = config.copy()
+        fourier_lens_config['lens_approach'] = 'against_lens'  
+        fourier_lens_config["illumination_scaling_factor"] = 1.0e-6
+        fourier_lens_phys_model = PhysicalLayer(fourier_lens_config).to(config['device'])
+        fourier_lens_phys_model.eval()
+        
+        if config.get("use_unet", False):
+            fourier_lens_cnn_model = OpticsDesignUnet(fourier_lens_config)
+            #print("Instantiated OpticsDesignUnet")
+        else:
+            fourier_lens_cnn_model = OpticsDesignCNN(fourier_lens_config)
+            #print("Instantiated OpticsDesignCNN")
+        fourier_lens_cnn_model.to(config['device'])
+        fourier_lens_cnn_model.load_state_dict(torch.load(args.model_path, map_location=config['device']))
+        fourier_lens_cnn_model.eval()
+        
+    else:
+        fourier_lens_phys_model = phys_model
+        
     # Create output directory for inference results using current datetime.
     dt_str = datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir = os.path.join(args.res_dir, dt_str)
@@ -232,6 +254,7 @@ def main():
             img_save_tiff(gt_img[display].astype(np.uint8), out_dir, "ground_truth", batch)
             # Compute metrics for binary
             compute_and_log_metrics(gt_img[display], cnn_img[display], out_dir, f"batch_{batch}", num_classes=2)
+        
         if num_classes == 3: 
             gt_img = batch_xyz_to_3_class_grid(xyz, xyz_between_beads, config)  
             gt_img = gt_img.squeeze(1)
@@ -241,17 +264,19 @@ def main():
 
         save_png(gt_img[display], out_dir, f"ground_truth_{batch}", config)
         
+        
         # Empty mask inference
         if args.empty_mask:
+            
             empty_mask_tensor = torch.zeros_like(mask_tensor)
             empty_mask_param = torch.nn.Parameter(empty_mask_tensor, requires_grad=False)
-            empty_phys_img = run_inference(phys_model, empty_mask_param, xyz)
+            empty_phys_img = run_inference(fourier_lens_phys_model, empty_mask_param, xyz)
             img_save_tiff(empty_phys_img[display], out_dir, "empty_mask_camera", batch)
             if num_classes == 1:
-                empty_cnn_img = run_inference(cnn_model, empty_mask_param, xyz, 'cnn')
+                empty_cnn_img = run_inference(fourier_lens_cnn_model, empty_mask_param, xyz, 'cnn')
                 img_save_tiff(empty_cnn_img[display], out_dir, "inference_empty_cnn", batch)
             if num_classes == 3:
-                empty_cnn_img = run_inference(cnn_model, empty_mask_param, xyz, 'cnn_3_class')
+                empty_cnn_img = run_inference(fourier_lens_cnn_model, empty_mask_param, xyz, 'cnn_3_class')
                 img_save_tiff(empty_cnn_img[display], out_dir, "inference_empty_cnn", batch, True)
             save_png(empty_cnn_img[display], out_dir, f"inference_empty_cnn_{batch}", config)
             save_png(empty_phys_img[display], out_dir, f"empty_mask_camera_{batch}", config)
@@ -267,17 +292,18 @@ def main():
         # Paper mask inference
         if args.paper_mask:
             paper_mask_param = paper_mask_param.to(config['device'])
-            paper_phys_img = run_inference(phys_model, paper_mask_param, xyz)
+            paper_phys_img = run_inference(fourier_lens_phys_model, paper_mask_param, xyz)
             img_save_tiff(paper_phys_img[display], out_dir, "paper_mask_camera", batch)
             if num_classes == 1:
-                paper_cnn_img = run_inference(cnn_model, paper_mask_param, xyz, 'cnn')
+                paper_cnn_img = run_inference(fourier_lens_cnn_model, paper_mask_param, xyz, 'cnn')
                 img_save_tiff(paper_cnn_img[display], out_dir, "inference_paper_cnn", batch)
             if num_classes == 3:
-                paper_cnn_img = run_inference(cnn_model, paper_mask_param, xyz, 'cnn_3_class')
+                paper_cnn_img = run_inference(fourier_lens_cnn_model, paper_mask_param, xyz, 'cnn_3_class')
                 img_save_tiff(paper_cnn_img[display], out_dir, "inference_paper_cnn", batch, True)
             save_png(paper_cnn_img[display], out_dir, f"inference_paper_cnn_{batch}", config)
             save_png(paper_phys_img[display], out_dir, f"paper_mask_camera_{batch}", config)
             # Generate beam profile for paper mask
+            """
             if args.generate_beam_profile:
                 paper_mask_np_for_beam = paper_mask_tensor.cpu().numpy()
                 mask_real = phase_mask_gen()
@@ -290,6 +316,6 @@ def main():
                 beam_profile_out_path = os.path.join(out_dir, "beam_profile_paper_mask.png")
                 skimage.io.imsave(beam_profile_out_path, (beam_profile/1e6).astype(np.uint16))
                 print(f"Saved beam profile for paper mask to {beam_profile_out_path}")
-
+            """ 
 if __name__ == "__main__":
     main()

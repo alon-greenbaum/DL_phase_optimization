@@ -12,7 +12,7 @@ from physics_utils import PhysicalLayer
 
 def main():
     parser = argparse.ArgumentParser(description="Test light propagation with optional axicon phase mask and save beam profile.")
-    parser.add_argument("--config", type=str, required=True, help="Path to config.yaml")
+    parser.add_argument("--config", type=str, required=False, help="Path to config.yaml")
     parser.add_argument("--mask", type=str, default="", help="Optional: path to phase mask tiff (default: zeros)")
     parser.add_argument("--output_dir", type=str, default="beam_profile_test", help="Output directory")
     parser.add_argument("--fresnel_lens_pattern", action="store_true", help="Use Fresnel lens phase mask")
@@ -22,12 +22,17 @@ def main():
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     output_subdir = os.path.join(args.output_dir, timestamp)
     os.makedirs(output_subdir, exist_ok=True)
-
-    config = load_config(args.config)
+    if args.mask and not args.config:
+        print(f"Using provided config and mask: {args.mask}")
+        mask_config_path = os.path.join(os.path.dirname(args.mask), "config.yaml")
+        config = load_config(mask_config_path)
+    else:
+        config = load_config(args.config)
     N = config['N']
-    px = config['px']  # pixel size in meters
-    px_mm = config['px'] * 1e3 # px in mm
-    px_um = config['px'] * 1e6 # px in um
+    px = float(config['px'])  # pixel size in meters
+    config['px'] = px  # Store pixel size in config for later use
+    px_mm = px * 1e3 # px in mm
+    px_um = px * 1e6 # px in um
     wavelength_nm = config['wavelength'] * 1e9 # wavelength in nm
     beam_fwhm = config['laser_beam_FWHC']
     bessel_angle = config['bessel_cone_angle_degrees']
@@ -83,7 +88,7 @@ def main():
         # Generate Fresnel lens phase mask
         yy, xx = np.meshgrid(np.arange(N) - N // 2, np.arange(N) - N // 2)
         r = np.sqrt(xx**2 + yy**2) * px_um * 1e-6  # radius in meters
-        fresnel_phase = (-np.pi / (wavelength_nm * 1e-9 * config['focal_length'])) * (r ** 2)
+        fresnel_phase = (-np.pi / (wavelength_nm * 1e-9 * config['fresnel_lens_focal_length'])) * (r ** 2)
         mask_np = np.mod(fresnel_phase, 2 * np.pi).astype(np.float32)
    
     elif initial_phase_mask == "empty":
@@ -111,9 +116,9 @@ def main():
     phys_layer = PhysicalLayer(config)
     phys_layer.eval()
     with torch.no_grad():
-        if lens_approach == 'fourier' or lens_approach == 'against_lens':
+        if lens_approach == 'against_lens':
             print("are you sure you didnt mean fourier lens?")
-            #output_layer = phys_layer.a(mask_tensor)
+            output_layer = phys_layer.against_lens(mask_tensor)
         elif lens_approach == 'fourier_lens' or lens_approach == 'convolution':
             output_layer = phys_layer.fourier_lens(mask_tensor)
         elif lens_approach == 'lensless':
@@ -148,7 +153,7 @@ def main():
 
         # Set axis labels and ticks in mm
         z_range_mm = np.linspace(z_min_mm, z_max_mm, num_z_steps)
-        y_range_mm = np.linspace(y_min_mm, y_max_mm, y_max_pixels - y_min_pixels + 1) * px_mm # Convert y-range back to mm for labels
+        y_range_mm = np.linspace(y_min_mm, y_max_mm, y_max_pixels - y_min_pixels + 1) 
 
         plt.title(
             f"Timestamp: {timestamp}\n"
@@ -157,6 +162,7 @@ def main():
             f"lens={lens_approach}, \n"
             f"focal_length_1={1.0e3*config.get('focal_length', 'N/A')}mm, \n"
             f"focal_length_2={1.0e3*config.get('focal_length_2', 'N/A')}mm \n"
+            f"fresnel_lens_focal_length={1.0e3*config.get('fresnel_lens_focal_length', 'N/A')}mm\n"
             f"Mask: {initial_phase_mask}\n"
             # display px
             f"Pixel size: {px_um:.2f} um\n"
@@ -170,8 +176,8 @@ def main():
             labels=[f"{z_range_mm[int(i)]:.2f}" for i in np.linspace(0, len(z_range_mm)-1, num=5)]
         )
         # For y-axis ticks, we need to map pixel indices to mm values
-        y_tick_pixels = np.linspace(0, beam_profile.shape[1] - 1, num=5)
-        y_tick_mm_labels = [f"{y_min_mm + (idx / beam_profile.shape[1]) * (y_max_mm - y_min_mm):.2f}" for idx in y_tick_pixels]
+        y_tick_pixels = np.linspace(0, len(y_range_mm)-1, num=5)
+        y_tick_mm_labels = [f"{y_range_mm[int(j)]:.2f}" for j in y_tick_pixels]
         plt.xticks(
             ticks=y_tick_pixels,
             labels=y_tick_mm_labels

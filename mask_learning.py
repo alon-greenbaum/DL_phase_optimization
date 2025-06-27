@@ -169,8 +169,13 @@ def learn_mask(config,res_dir):
         mask_phase = generate_axicon_phase_mask(
             (mask_phase_pixels, mask_phase_pixels), px*10**6, wavelength*10**9, bessel_cone_angle_degrees
         )
-    else:
+    elif config.get('initial_phase_mask', None) == "empty":
         mask_phase = np.zeros((mask_phase_pixels,mask_phase_pixels))
+    else:
+        # please enter a valid initial phase mask type error
+        raise ValueError("Please enter a valid initial phase mask type.")
+        
+        
     save_png(mask_phase, res_dir, "initial_phase_mask", config)
     mask_phase = torch.from_numpy(mask_phase).type(torch.FloatTensor).to(device)
     mask_param = nn.Parameter(mask_phase)
