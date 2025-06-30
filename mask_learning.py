@@ -342,7 +342,7 @@ def learn_mask(config,res_dir):
                 #    savePhaseMask(mask_param,batch_ind,epoch,res_dir)       
         train_losses.append(train_loss)
         np.savetxt(os.path.join(res_dir,'train_losses.txt'),train_losses,delimiter=',')
-        if epoch % 1 == 0:
+        if epoch % 5 == 0 or epoch == 0:
             torch.save(cnn.state_dict(),os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
         save_png(mask_param.detach(), res_dir, str(epoch).zfill(3), config)
        #save_png(mask_param, res_dir, str(epoch).zfill(3), config)

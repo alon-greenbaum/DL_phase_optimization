@@ -448,6 +448,7 @@ class PhysicalLayer(nn.Module):
             
         # Step 2: Propagation kernel
         prop_kernel = torch.exp(1j * self.k * self.gamma_cust * z * self.px)
+        
         if debug:
          self._visualize_step("Propagation Kernel", prop_kernel)
          
@@ -548,8 +549,9 @@ class PhysicalLayer(nn.Module):
             plt.colorbar()
             plt.tight_layout()
             plt.show(block=False)
-
-        U1_cropped = U1[-self.N:, -self.N:]
+        #check if there are two singeltons in U1
+        
+        U1_cropped = U1[...,-self.N:, -self.N:]
         U1_intensity = torch.real(U1_cropped * torch.conj(U1_cropped))
         
         if debug:
@@ -568,9 +570,10 @@ class PhysicalLayer(nn.Module):
         Ta = Ta[None, None, :] 
         Ul = self.incident_gaussian * Ta # light directly behind the SLM (or in our case reflected from the SLM)
         Ul_prime = Ul * self.B1 # light after the lens
-        Ul_prime_pad = F.pad(Ul_prime, (self.N//2, self.N//2, self.N//2, self.N//2), 'constant', 0) # padded to interpolate with fft
-        Uf = torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1))) # light at the back focal plane of the lens   
-        output_layer = Uf[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
+        output_layer = self.fresnel_propagation(Ul_prime, self.focal_length/self.px, debug=False) # light at the back focal plane of the lens
+        #Ul_prime_pad = F.pad(Ul_prime, (self.N//2, self.N//2, self.N//2, self.N//2), 'constant', 0) # padded to interpolate with fft
+        #Uf = torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fft2(Ul_prime_pad) * torch.fft.fft2(self.Q1))) # light at the back focal plane of the lens   
+        #output_layer = Uf[:, :, self.N // 2:3 * self.N // 2, self.N // 2:3 * self.N // 2]
         return output_layer
 
     def fourier_lens(self, phase_mask):
@@ -722,8 +725,8 @@ class PhysicalLayer(nn.Module):
             
         elif self.lens_approach == 'lensless':
             output_layer = self.lensless(phase_mask)
-            # propagate to 1mm or 1e3 pixels infront of lens
-            output_layer = self.angular_spectrum_propagation(output_layer, self.lenless_prop_distance * self.px) # infront of lens
+            # propagate to prop distance  pixels infront of lens
+            output_layer = self.angular_spectrum_propagation(output_layer, self.lenless_prop_distance/self.px) # infront of lens
 
 
             

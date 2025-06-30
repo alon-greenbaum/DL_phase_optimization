@@ -9,19 +9,19 @@
             "console": "integratedTerminal",
             "args": [
                 "--input_dir",
-                "/home/regarry/dd_phase_optimization/training_results/phase_model_20250627-161833/",
+                "/home/regarry/dd_phase_optimization/training_results/phase_model_20250630-140341/",
                 //"./training_results/phase_model_20250508-165157/",
                 "--epoch",
-                "1",
+                "91",
                 "--res_dir",
                 "inference_results",
                 "--num_inferences",
-                "1",
+                "3",
                 //"--lens_approach",
                 //"fresnel",
-                "--empty_mask",
-                "--paper_mask",
-                "example_optimized_phase.tiff",
+                //"--empty_mask",
+                //"--paper_mask",
+                //"example_optimized_phase.tiff",
                 //"--no_noise",
                 //"--max_intensity",
                 //"8.0e+10", // 5e4, 5e10
@@ -39,9 +39,9 @@
             "program": "${workspaceFolder}/beam_profiler.py",
             "console": "integratedTerminal",
             "args": [
-                "--config", "config.yaml",
+                //"--config", "config.yaml",
                 "--output_dir", "beam_axicon",
-                //"--mask", "/home/regarry/dd_phase_optimization/training_results/phase_model_20250626-163515/mask_phase_epoch_198_499.tiff"
+                "--mask", "/home/regarry/dd_phase_optimization/training_results/phase_model_20250630-140341/mask_phase_epoch_90_149.tiff"
                 //"--fresnel_lens_pattern"
             ]
         }

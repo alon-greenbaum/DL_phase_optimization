@@ -148,8 +148,8 @@ def main():
  
     if learned_lens_approach != 'fourier_lens' and (args.empty_mask or args.paper_mask):
         fourier_lens_config = config.copy()
-        fourier_lens_config['lens_approach'] = 'against_lens'  
-        fourier_lens_config["illumination_scaling_factor"] = 1.0e-6
+        fourier_lens_config['lens_approach'] = 'fourier_lens'  
+        #fourier_lens_config["illumination_scaling_factor"] = 1.0e-6
         fourier_lens_phys_model = PhysicalLayer(fourier_lens_config).to(config['device'])
         fourier_lens_phys_model.eval()
         

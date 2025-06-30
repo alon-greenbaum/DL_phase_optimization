@@ -1,4 +1,4 @@
-ntrain: 1000  # default 10000 how many bead volumes per epoch
+ntrain: 300  # default 10000 how many bead volumes per epoch
 nvalid: 1  # default 1000
 batch_size_gen: 2  # default 2
 # Number of emitters per image
@@ -51,9 +51,9 @@ aperature: False
 #z_img_mode: 'edgecenter'
 #z_spacing: 2
 z_depth_list: [0] # z slices input into the cnn
-z_coupled_ratio: 0.2
+z_coupled_ratio: 1.0
 z_coupled_spacing_range: [2,5]
-weights: [1.0,1.0,1.5] # cross entropy loss weights (must be floats)
+weights: [1.0,1.0,2.0] # cross entropy loss weights (must be floats)
 
 # 0 = background, 1 = bead
 # 2 = between beads
@@ -68,7 +68,7 @@ angular_spectrum_method: True
 
 # beam profiler paramters
 z_min_mm: 0.0         # Minimum z-position for beam profile in millimeters
-z_max_mm: 10.0        # Maximum z-position for beam profile in millimeters
+z_max_mm: 2.0        # Maximum z-position for beam profile in millimeters
 y_min_mm: -0.05          # Minimum y-position for beam profile in millimeters
 y_max_mm: 0.05        # Maximum y-position for beam profile in millimeters
 num_z_steps: 200        # Number of simulation steps/planes across the z-range
