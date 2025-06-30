@@ -280,7 +280,7 @@ class PhysicalLayer(nn.Module):
         #unpack the config
         self.config = config
         self.bfp_dir = config["bfp_dir"]
-        N =  config['N']
+        self.N =  config['N']
         self.px = config['px']  #the pixel size used
         self.wavelength = config['wavelength']
         self.focal_length = config['focal_length']
@@ -301,7 +301,6 @@ class PhysicalLayer(nn.Module):
             max_intensity = config.get('max_intensity_conv', 8.0e+10)    
         self.device = device
         self.psf_keep_radius = psf_keep_radius
-        self.N = N # the size of the FOV in pixels
         self.max_intensity = torch.tensor(max_intensity)
         self.counter = 0
         self.focal_length_2 = config['focal_length_2']  # for 4f approach
@@ -331,14 +330,14 @@ class PhysicalLayer(nn.Module):
         self.image_volume_um = image_volume
 
         self.up = nn.UpsamplingBilinear2d(scale_factor=2)
-        x = list(range(-N // 2, N // 2))
-        y = list(range(-N // 2, N // 2))
+        x = list(range(-self.N // 2, self.N // 2))
+        y = list(range(-self.N // 2, self.N // 2))
         [X, Y] = np.meshgrid(x, y)
         X = X * self.px
         Y = Y * self.px
         
-        xx = list(range(-N + 1, N + 1))
-        yy = list(range(-N + 1, N + 1))
+        xx = list(range(-self.N + 1, self.N + 1))
+        yy = list(range(-self.N + 1, self.N + 1))
         [XX, YY] = np.meshgrid(xx, yy)
         self.XX = XX * self.px
         self.YY = YY * self.px
@@ -371,9 +370,9 @@ class PhysicalLayer(nn.Module):
         # angular specturm
         k = 2 * self.refractive_index * np.pi / self.wavelength
         self.k = k
-        phy_x = N * self.px  # physical width (meters)
-        phy_y = N * self.px  # physical length (meters)
-        obj_size = [N, N]
+        phy_x = self.N * self.px  # physical width (meters)
+        phy_y = self.N * self.px  # physical length (meters)
+        obj_size = [self.N, self.N]
         # generate meshgrid
         Fs_x = obj_size[1] / phy_x
         Fs_y = obj_size[0] / phy_y
