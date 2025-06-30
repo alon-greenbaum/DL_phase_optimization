@@ -16,6 +16,7 @@ from psf_gen import apply_blur_kernel
 from data_utils import PhasesOnlineDataset, savePhaseMask, generate_batch, load_config, makedirs, save_png
 from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
+from physics_utils import TotalVariationLoss
 from loss_utils import KDE_loss3D, jaccard_coeff
 #from beam_profile_gen import phase_gen
 import scipy.io as sio
@@ -158,7 +159,7 @@ def learn_mask(config,res_dir):
     px = config['px']
     wavelength = config['wavelength']
     bessel_cone_angle_degrees = config.get('bessel_cone_angle_degrees', 1.0)
-
+    tv_loss_weight = config.get('tv_loss_weight', 0.0)
     
     # train on GPU if available
     #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -258,6 +259,8 @@ def learn_mask(config,res_dir):
         # 2 = between beads
     else: 
         criterion = nn.BCEWithLogitsLoss().to(device)
+        
+    tv_loss_module = TotalVariationLoss(weight=tv_loss_weight)
     # Model layers and number of parameters
     print("number of parameters: ", sum(param.numel() for param in cnn.parameters()))
     # start from scratch
@@ -309,10 +312,13 @@ def learn_mask(config,res_dir):
                 #img = torch.zeros((batch_size_gen,1,500,500)).type(torch.FloatTensor).to(device)
                 optimizer.zero_grad()
                 outputs = cnn(mask_param,xyz)
+                # get the phase mask from model
                 #return targets
                 loss = criterion(outputs, targets)
+                loss_tv = tv_loss_module(mask_param)
+                total_loss = loss + loss_tv
                 
-                loss.backward(retain_graph=True)
+                total_loss.backward(retain_graph=True)
                 optimizer.step() 
                 """
                 # --- Add this section to inspect gradients ---
@@ -330,7 +336,7 @@ def learn_mask(config,res_dir):
                 # --- End of gradient inspection section ---
                 """
                 # running statistics
-                train_loss += loss.item()
+                train_loss += total_loss.item()
                 #jacc_ind = jaccard_coeff(outputs,targets)
                 #train_jacc += jacc_ind.item()
                 

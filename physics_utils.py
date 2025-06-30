@@ -14,6 +14,52 @@ from data_utils import save_output_layer, normalize_to_uint16
 
 # nohup python mask_learning.py &> ./logs/01-31-25-09-38.txt &
 
+class TotalVariationLoss(nn.Module):
+    """
+    A PyTorch module to calculate the anisotropic total variation loss.
+    """
+    def __init__(self, weight=1.0):
+        """
+        Args:
+            weight (float): The weight for the TV loss in the total loss calculation.
+        """
+        super(TotalVariationLoss, self).__init__()
+        self.weight = weight
+
+    def forward(self, img):
+        """
+        Calculates the TV loss for the input image tensor.
+        
+        Args:
+            img (torch.Tensor): The input image tensor. 
+                                Expected shape: (N, C, H, W)
+        
+        Returns:
+            torch.Tensor: The weighted total variation loss.
+        """
+        # Get the image dimensions
+        #if dim == 4:
+    
+        if img.dim() == 2:
+            # unsqueeze to add batch and channel dimensions
+            img = img.unsqueeze(0).unsqueeze(0)
+            
+        elif img.dim() == 3:
+            img = img.unsqueeze(0)
+            
+        batch_size, channels, height, width = img.shape
+
+        # Calculate the horizontal and vertical differences using slicing
+        # This is more memory-efficient than using convolutions.
+        horizontal_diff = img[:, :, :, 1:] - img[:, :, :, :-1]
+        vertical_diff = img[:, :, 1:, :] - img[:, :, :-1, :]
+        
+        # Calculate the L1 norm of the differences
+        # We sum over all dimensions to get a single scalar loss value.
+        tv_loss = torch.sum(torch.abs(horizontal_diff)) + torch.sum(torch.abs(vertical_diff))
+        
+        # Normalize by the number of elements in the batch and apply the weight
+        return self.weight * tv_loss / batch_size
 
 # This function creates a 2D gaussian filter with std=1, without normalization.
 # during training this filter is scaled with a random std to simulate different blur per emitter

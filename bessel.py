@@ -78,13 +78,13 @@ def visualize_phase_mask(phase_mask, title="Axicon Phase Mask"):
 if __name__ == "__main__":
     # SLM parameters (adjust these to match your SLM)
     slm_resolution = (500, 500) # Example: Full HD SLM (height, width)
-    slm_pixel_pitch_um = 8.2     # Example: 8 um pixel pitch
+    slm_pixel_pitch_um = 9.2     # Example: 8 um pixel pitch
 
     # Laser parameters
     laser_wavelength_nm = 561.0  # Example: Green laser
 
     # Desired Bessel beam properties
-    desired_bessel_cone_angle_deg = .5 # A small angle for a long Bessel beam
+    desired_bessel_cone_angle_deg = 1 # A small angle for a long Bessel beam
 
     print(f"Generating axicon phase mask with parameters:")
     print(f"  SLM Resolution: {slm_resolution}")

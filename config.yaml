@@ -85,3 +85,5 @@ camera_max_adu: 65535        # Maximum ADU value (e.g., 2^12 - 1 for 12-bit)
 illumination_scaling_factor: 1.0e-2 # Scaling factor for the illumination intensity
 lenless_prop_distance: 1.0e-3  # Propagation distance from SLM for lensless imaging in meters [this is where the center of the bead volume is placed]
 fresnel_lens_focal_length: 1.0e-3
+
+tv_loss_weight: 0.001
