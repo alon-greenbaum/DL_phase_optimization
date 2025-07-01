@@ -1,0 +1,22 @@
+6/10/25
+propogate the axicon in free space and see what it looks like
+propogate the ring that forms after the lens and see if it interferes to form a bessel
+
+6/12/25
+now measure the fwhm at the focal point of the slm with a fresnel lens and then use an empty gaussian and calculate the fwhm of the gaussian after a lens.
+
+Also be sure that the fwhm is changing as a function of the gaussian beam equation
+
+There is a trade off between the pixel size and the field of view
+
+Also check whether the fresnel convolution approach increases the pixel size in the output planes
+
+understand where the fresnel approx holds
+
+see why the angula spectrum is producing different focusing
+
+see the fwhm of the beam at the focal plane and beyond
+
+demagnify the bessel beam and measure the non diffracting zone
+
+see the effects of the non diffracting region of the bessel beam

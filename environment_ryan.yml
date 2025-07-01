@@ -1,0 +1,27 @@
+name: dlphase
+channels:
+  - conda-forge
+  - pytorch
+  - anaconda
+  - defaults
+  - bioconda
+  - menpo
+
+dependencies:
+  - imageio
+  - numpy
+  - pandas
+  - pillow
+  - pip
+  - python=3.8.13
+  - scikit-image
+  - scikit-learn
+  - scipy
+  - matplotlib
+  - pip:
+    - torch
+    - torchaudio
+    - torchvision
+    - tensorboard
+    - tqdm
+    - hdf5storage

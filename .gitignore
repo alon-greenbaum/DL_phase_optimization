@@ -1,0 +1,6 @@
+beads_img_defocus/
+*.pyc
+__pycache__/
+output_layer_imgs/
+results/
+traininglocations/

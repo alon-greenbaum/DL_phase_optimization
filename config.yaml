@@ -1,0 +1,89 @@
+ntrain: 300  # default 10000 how many bead volumes per epoch
+nvalid: 1  # default 1000
+batch_size_gen: 2  # default 2
+# Number of emitters per image
+num_particles_range: [200, 201]  # with a strong gpu [450, 550]
+image_volume: [200, 200, 30]  # the volume of imaging each dimension in um (i think these are in camera coordinates)
+particle_spatial_range_xy: [15, 185]  # dependence on the volume size default 200 um
+# um, to avoid edges of the image so 15 um away
+particle_spatial_range_z: [-10, 11, 1]  # um default range(-10,11,1)
+# Define the parameters
+N: 1152  # grid size
+px: 9.2e-6 # 1.0e-6 # 0.25e-6  # pixel size [m]
+focal_length: 1.0e-3  # [m]
+wavelength: 561.0e-9  # [m]
+refractive_index: 1.0  # We assume propagation is in air
+psf_width_pixels: 101  # How big will be the psf image
+psf_edge_remove: 15
+psf_keep_radius: 15
+numerical_aperture: 0.6  # Relates to the resolution of the detection objective
+bead_radius: 1.0  # pixels 1.0 default, can change to make larger beads
+random_seed: 123456
+initial_learning_rate: 0.01
+batch_size: 1
+max_epochs: 200
+mask_phase_pixels: 1152
+data_path: "beads_img_defocus"
+path_save: "data_mask_learning"
+path_train: "traininglocations"
+ori_intensity: 20000  # arbitrary units
+laser_beam_FWHC: 100.0e-6 #425.0e-6  # in m, the size of the FWHM of the Gaussian beam (0.6mm with 3x BE)
+max_defocus: 41  # um for generating the PSFs
+learning_rate_scheduler_factor: 0.1
+learning_rate_scheduler_patience: 5
+learning_rate_scheduler_patience_min_lr: 1.0e-6
+max_intensity_conv: 8.0e+10 # convol: 5.0e+10, fresnel: 5e4
+max_intensity_fresnel: 5.0e+4
+# In case that the network needs to downsample the image, GPU memory issues
+ratio_input_output_image_size: 1  # default with Unet 1, with ResNet 4
+# How many planes to consider as right classification, besides the plane
+# in focus, if 1 the -1, in focus, and +1 plane will be considered correct
+# if 0, only the infocus plane is considered, default value 1
+z_range_cost_function: [0,0] # the range +- from z=0 that is considered ground truth
+use_unet: true
+num_classes: 3
+lens_approach: "lensless" # "fourier_lens" or "4f" or "lensless"
+power_2: 1000 # pad to this power for fourier transform
+bfp_dir: "back_focal_plane"
+dropout: 0.5
+conv3d: False
+aperature: False
+#z_img_mode: 'edgecenter'
+#z_spacing: 2
+z_depth_list: [0] # z slices input into the cnn
+z_coupled_ratio: 1.0
+z_coupled_spacing_range: [2,5]
+weights: [1.0,1.0,2.0] # cross entropy loss weights (must be floats)
+
+# 0 = background, 1 = bead
+# 2 = between beads
+# currently about 2x as many beads as between beads
+# increase z couple spacing or ratio to increase the number of between beads
+# try focal loss
+# changing input z slices
+initial_phase_mask: "empty"
+bessel_cone_angle_degrees: 8.0
+focal_length_2: 1.0e-3  # [m] focal length of the second lens
+angular_spectrum_method: True
+
+# beam profiler paramters
+z_min_mm: 0.0         # Minimum z-position for beam profile in millimeters
+z_max_mm: 2.0        # Maximum z-position for beam profile in millimeters
+y_min_mm: -0.05          # Minimum y-position for beam profile in millimeters
+y_max_mm: 0.05        # Maximum y-position for beam profile in millimeters
+num_z_steps: 200        # Number of simulation steps/planes across the z-range
+
+
+# camera noise parameters
+quantum_efficiency: 0.75     # Quantum efficiency (0-1)
+dark_current_mean: 1000       # Increased: Mean dark current electrons per pixel (for more visible dark noise)
+read_noise_std: 200          # Significantly increased: Read noise standard deviation in electrons RMS (for more visible constant noise)
+camera_gain: 0.7             # Camera gain (electrons per ADU)
+camera_max_adu: 65535        # Maximum ADU value (e.g., 2^12 - 1 for 12-bit)
+
+
+illumination_scaling_factor: 1.0e-2 # Scaling factor for the illumination intensity
+lenless_prop_distance: 1.0e-3  # Propagation distance from SLM for lensless imaging in meters [this is where the center of the bead volume is placed]
+fresnel_lens_focal_length: 1.0e-3
+
+tv_loss_weight: 0.0  # 1.0e-9  # Weight for the total variation loss of the phase mask
