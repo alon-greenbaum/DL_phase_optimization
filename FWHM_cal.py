@@ -4,7 +4,7 @@ from scipy.interpolate import UnivariateSpline
 import numpy as np
 import pylab as pl
 import sys
-%matplotlib inline
+#%matplotlib inline
 def FWHM(path):
     #file_path = './results/model_fig2/gaussianprofile/'
     x = range(0,201)
@@ -13,7 +13,7 @@ def FWHM(path):
     for index in range(len(x)):
         img = skimage.io.imread(path+str(x[index]) + '.tiff')
         
-        intensity_values = sum(imgastype(np.uint32))
+        intensity_values = sum(img.astype(np.uint32))
         #print(intensity_values)
         #print(x[index])
         ans.append(intensity_values)

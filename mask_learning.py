@@ -13,35 +13,50 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import pickle
 from psf_gen import apply_blur_kernel
-from data_utils import PhasesOnlineDataset, savePhaseMask, generate_batch
+from data_utils import PhasesOnlineDataset, savePhaseMask, generate_batch, load_config, makedirs, save_png
 from cnn_utils import OpticsDesignCNN
 from cnn_utils_unet import OpticsDesignUnet
+from physics_utils import TotalVariationLoss
 from loss_utils import KDE_loss3D, jaccard_coeff
-from beam_profile_gen import phase_gen
+#from beam_profile_gen import phase_gen
 import scipy.io as sio
+#from torchmetrics.functional.classification import multiclass_focal_loss
+from bessel import generate_axicon_phase_mask
+#import hdf5storage  # new import for saving MATLAB 7.3 files
 
+# systemctl restart --user xdg-desktop-portal-gnome
+# nohup python mask_learning.py &> ./logs/$(date +'%Y%m%d-%H%M%S').txt &
+def list_to_range(lst):
+    if len(lst) == 1:
+        return range(lst[0])
+    if len(lst) == 2:
+        return range(lst[0], lst[1])
+    elif len(lst) == 3:
+        return range(lst[0], lst[1], lst[2])
 
-
-#This part generates the beads location for the training and validation sets
-def gen_data(config):
+# This part generates the beads location for the training and validation sets
+def gen_data(config, res_dir):
     ntrain = config['ntrain']
     nvalid = config['nvalid']
     batch_size_gen = config['batch_size_gen']
-    particle_spatial_range_xy = config['particle_spatial_range_xy']
-    particle_spatial_range_z = config['particle_spatial_range_z']
+    particle_spatial_range_xy = list_to_range(config['particle_spatial_range_xy'])
+    particle_spatial_range_z = list_to_range(config['particle_spatial_range_z'])
     num_particles_range = config['num_particles_range']
-    random_seed = config['random_seed']
-    device = config['device']
+    z_coupled_ratio = config.get('z_coupled_ratio',0)
+    z_coupled_spacing_range = config.get('z_coupled_spacing_range',(0,0))
+    #device = config['device']
+    #path_train = config['path_train']
+    
 
     torch.backends.cudnn.benchmark = True
 
-    # set random seed for repeatability
-    torch.manual_seed(random_seed)
-    np.random.seed(random_seed//2 + 1)
+    # set random seed for repeatability 
+    # seed already set in main function - ryan
+    #torch.manual_seed(random_seed)
+    #np.random.seed(random_seed)
 
-    path_train = 'traininglocations/'
-    if not (os.path.isdir(path_train)):
-        os.mkdir(path_train)
+    #if not (os.path.isdir(path_train)):
+    #    os.mkdir(path_train)
 
     # print status
     print('=' * 50)
@@ -57,22 +72,27 @@ def gen_data(config):
     labels_dict = {}
     for i in range(ntrain_batches):
         # sample a training example
-        xyz, Nphotons = generate_batch(batch_size_gen, num_particles_range, particle_spatial_range_xy,
-                                       particle_spatial_range_z)
-        labels_dict[str(i)] = {'xyz': xyz, 'N': Nphotons}
+        xyz, xyz_between_beads = generate_batch(batch_size_gen, num_particles_range, particle_spatial_range_xy,
+                                       particle_spatial_range_z, z_coupled_ratio, 
+                                       z_coupled_spacing_range)
+        labels_dict[str(i)] = {'xyz': xyz, 'xyz_between_beads': xyz_between_beads}
         # print number of example
         print('Training Example [%d / %d]' % (i + 1, ntrain_batches))
 
     nvalid_batches = int(nvalid / batch_size_gen)
     for i in range(nvalid_batches):
-        xyz, Nphotons = generate_batch(batch_size_gen, num_particles_range, particle_spatial_range_xy,
-                                       particle_spatial_range_z)
-        labels_dict[str(i + ntrain_batches)] = {'xyz': xyz, 'N': Nphotons}
+        xyz, xyz_between_beads = generate_batch(batch_size_gen, num_particles_range, particle_spatial_range_xy,
+                                       particle_spatial_range_z, z_coupled_ratio, 
+                                       z_coupled_spacing_range)
+        labels_dict[str(i + ntrain_batches)] = {'xyz': xyz, 'xyz_between_beads': xyz_between_beads}
         print('Validation Example [%d / %d]' % (i + 1, nvalid_batches))
 
-    path_labels = path_train + 'labels.pickle'
+    path_labels = os.path.join(res_dir,'labels.pickle')
     with open(path_labels, 'wb') as handle:
         pickle.dump(labels_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # Save labels_dict in .mat format as MATLAB 7.3
+    #path_labels_mat = os.path.join(res_dir, 'labels.mat')
+    #hdf5storage.savemat(path_labels_mat, labels_dict, matlab_ver='7.3')
 
 # AG this part is generating the images of the defocused images at different planes 
 # the code will save these images as template for future use.
@@ -86,6 +106,8 @@ def beads_img(config):
     setup_defocus_psf = sio.loadmat('psf_z.mat')['psf'] #this is a matrix that Chen has generated before
     ori_intensity = config['ori_intensity']
     max_defocus = config['max_defocus']
+    
+    makedirs(data_path)
 
     #generate the bead in the center based on the bead size in pixels
     for x in range(int(math.floor(psf_width_pixels/2)-bead_radius), int(math.floor(psf_width_pixels/2)+bead_radius+1)):
@@ -99,71 +121,91 @@ def beads_img(config):
     #41 refers to 41 um maximum defocus in the simulation; the volume was 200x200x30um^3, 30 um in Z so max 15 um defocus
     for i in range(max_defocus):
         blurred_img = apply_blur_kernel(bead_ori_img, setup_defocus_psf[i])
-        skimage.io.imsave(data_path + 'z' + str(i).zfill(2) + '.tiff', blurred_img.astype('uint16'))
+        skimage.io.imsave(os.path.join(data_path, 'z' + str(i).zfill(2) + '.tiff'), blurred_img.astype('uint16'))
     return None
 
-def makedirs(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
+
         
-def learn_mask(config):
+def learn_mask(config,res_dir):
 
     #Unpack parameters
     ntrain = config['ntrain']
     nvalid = config['nvalid']
     batch_size_gen = config['batch_size_gen']
-    random_seed = config['random_seed']
     initial_learning_rate = config['initial_learning_rate']
     batch_size = config['batch_size']
     max_epochs = config['max_epochs']
     mask_phase_pixels = config['mask_phase_pixels']
-    psf_width_meters = config['psf_width_pixels'] * config['px']
-    path_save = config['path_save']
-    path_train = config['path_train']
+    #psf_width_meters = config['psf_width_pixels'] * config['px']
+    #path_save = config['path_save']
+    #path_train = config['path_train']
     learning_rate_scheduler_factor = config['learning_rate_scheduler_factor']
     learning_rate_scheduler_patience = config['learning_rate_scheduler_patience']
     learning_rate_scheduler_patience_min_lr = config['learning_rate_scheduler_patience_min_lr']
     device = config['device']
     use_unet = config['use_unet']
+    #z_spacing = config.get('z_spacing', 0)
+    #z_img_mode = config.get('z_img_mode', 'edgecenter')
+    #if z_img_mode == 'edgecenter' and z_spacing > 0:
+    #    z_depth_list = [-z_spacing, 0, z_spacing]
+    #else:
+    #    z_depth_list = list(range(-z_spacing,z_spacing+1))
+    z_depth_list = config['z_depth_list']
+    Nimgs = len(z_depth_list)
+    config['Nimgs'] = Nimgs
+    weights = config.get('weights', [1,1,1])
     num_classes = config['num_classes']
-
-
-    #Set the random seed
-    torch.manual_seed(random_seed)
-    np.random.seed(random_seed)
+    focal_loss = config.get('focal_loss', False)
+    px = config['px']
+    wavelength = config['wavelength']
+    bessel_cone_angle_degrees = config.get('bessel_cone_angle_degrees', 1.0)
+    tv_loss_weight = config.get('tv_loss_weight', 0.0)
     
     # train on GPU if available
     #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
 
     #Set the mask_phase as the parameter to derive
-    mask_phase = np.zeros((mask_phase_pixels,mask_phase_pixels))
+    if config.get('initial_phase_mask', None) == "axicon":
+        mask_phase = generate_axicon_phase_mask(
+            (mask_phase_pixels, mask_phase_pixels), px*10**6, wavelength*10**9, bessel_cone_angle_degrees
+        )
+    elif config.get('initial_phase_mask', None) == "empty":
+        mask_phase = np.zeros((mask_phase_pixels,mask_phase_pixels))
+    else:
+        # please enter a valid initial phase mask type error
+        raise ValueError("Please enter a valid initial phase mask type.")
+        
+        
+    save_png(mask_phase, res_dir, "initial_phase_mask", config)
     mask_phase = torch.from_numpy(mask_phase).type(torch.FloatTensor).to(device)
     mask_param = nn.Parameter(mask_phase)
     mask_param.requires_grad_()
-
-    if not (os.path.isdir(path_save)):
-        os.mkdir(path_save)
     
-    # set results folder
-    model_name = '{}_{}'.format('phase_model_', datetime.now().strftime("%Y%m%d-%H%M%S"))
-    res_dir = os.path.join('./results', model_name)
-    makedirs(res_dir)
 
-    # Save dictionary to a text file
-    with open(res_dir + '\config.txt', 'w') as file:
+    # I don't know what goes in here so I commented it out - ryan
+    #if not (os.path.isdir(path_save)):
+    #    os.mkdir(path_save)
+    
+    
+
+    # Save dictionary to a text file ensuring key 'px' is saved as a float
+    with open(os.path.join(res_dir, 'config.yaml'), 'w') as file:
         for key, value in config.items():
-            file.write(f'{key}: {value}\n')
+            if key == "px":
+                file.write(f"{key}: {float(value)}\n")
+            else:
+                file.write(f"{key}: {value}\n")
 
 
     # load all locations pickle file, to generate the labels go to Generate data folder
-    path_pickle = path_train + 'labels.pickle'
+    path_pickle = os.path.join(res_dir, 'labels.pickle')
     with open(path_pickle, 'rb') as handle:
         labels = pickle.load(handle)
     
     # parameters for data loaders batch size is 1 because examples are generated 16 at a time
     params_train = {'batch_size': batch_size, 'shuffle': True}
-    params_valid = {'batch_size': batch_size, 'shuffle': False}
+    #params_valid = {'batch_size': batch_size, 'shuffle': False}
     ntrain_batches = int(ntrain/batch_size_gen)
     nvalid_batches = int(nvalid/batch_size_gen)
     steps_per_epoch = ntrain_batches
@@ -179,14 +221,14 @@ def learn_mask(config):
     training_set = PhasesOnlineDataset(partition['train'],labels, config)
     training_generator = DataLoader(training_set, **params_train)
     
-    validation_set = PhasesOnlineDataset(partition['valid'], labels, config)
-    validation_generator = DataLoader(validation_set, **params_valid)
+    #validation_set = PhasesOnlineDataset(partition['valid'], labels, config)
+    #validation_generator = DataLoader(validation_set, **params_valid)
     
     # build model and convert all the weight tensors to cuda()
     print('=' * 20)
 
     if use_unet:
-        cnn = OpticsDesignUnet(num_classes, config)
+        cnn = OpticsDesignUnet(config)
         print('UNET architecture')
     else:
         cnn = OpticsDesignCNN(config)
@@ -200,29 +242,43 @@ def learn_mask(config):
     optimizer = Adam(list(cnn.parameters()) + [mask_param], lr=initial_learning_rate)
     # learning rate scheduler for now
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=learning_rate_scheduler_factor,\
-    patience=learning_rate_scheduler_patience, verbose=True, min_lr=learning_rate_scheduler_patience_min_lr)
+                                  patience=learning_rate_scheduler_patience, verbose=True, 
+                                  min_lr=learning_rate_scheduler_patience_min_lr)
     
     # loss function
     #criterion = KDE_loss3D(100.0)
-    criterion = nn.BCEWithLogitsLoss().to(device)
+    if num_classes > 1:
+        weights = torch.tensor(weights).to(device)
+        if focal_loss:
+            criterion = lambda outputs, targets: multiclass_focal_loss(
+            outputs, targets, num_classes=num_classes, alpha=weights, reduction="mean"
+            )
+        else:
+            criterion = nn.CrossEntropyLoss(weight=weights).to(device)
+        # 0 = background, 1 = bead
+        # 2 = between beads
+    else: 
+        criterion = nn.BCEWithLogitsLoss().to(device)
+        
+    tv_loss_module = TotalVariationLoss(weight=tv_loss_weight)
     # Model layers and number of parameters
     print("number of parameters: ", sum(param.numel() for param in cnn.parameters()))
     # start from scratch
     start_epoch, end_epoch, num_epochs = 0, max_epochs, max_epochs
     # initialize the learning results dictionary
-    learning_results = {'train_loss': [], 'train_jacc': [], 'valid_loss': [], 'valid_jacc': [],
-                            'max_valid': [], 'sum_valid': [], 'steps_per_epoch': steps_per_epoch}
+    #learning_results = {'train_loss': [], 'train_jacc': [], 'valid_loss': [], 'valid_jacc': [],
+    #                        'max_valid': [], 'sum_valid': [], 'steps_per_epoch': steps_per_epoch}
     # initialize validation set loss to be infinity and jaccard to be 0
-    valid_loss_prev, valid_JI_prev = float('Inf'), 0.0
+    #valid_loss_prev, valid_JI_prev = float('Inf'), 0.0
     
     
     # starting time of training
-    train_start = time.time()
+    #train_start = time.time()
     
     # loop over epochs
-    not_improve = 0
+    #not_improve = 0
     train_losses = []
-    for epoch in np.arange(start_epoch,end_epoch):
+    for epoch in np.arange(start_epoch, end_epoch):
         epoch_start_time = time.time()
         # print current epoch number
         print('='*20)
@@ -232,19 +288,22 @@ def learn_mask(config):
         # training phase
         cnn.train()
         train_loss = 0.0
-        train_jacc = 0.0
+        #train_jacc = 0.0
         with torch.set_grad_enabled(True):
-            for batch_ind, (xyz_np, Nphotons, targets) in enumerate(training_generator):
+            for batch_index, (xyz, targets) in enumerate(training_generator):
                 #return xyz_np
                 # transfer data to variable on GPU
                 targets = targets.to(device)
-                Nphotons = Nphotons.to(device)
-                xyz_np = xyz_np.to(device)
+                #Nphotons = Nphotons.to(device)
+                xyz = xyz.to(device)
                 
                 # squeeze batch dimension
-                targets = targets.squeeze(dim=0)
-                Nphotons = Nphotons.squeeze()
-                xyz_np = xyz_np.squeeze()
+                targets = targets.squeeze(0)
+                if num_classes > 1:
+                    targets = targets.squeeze(1)
+                    targets = targets.long()
+                #Nphotons = Nphotons.squeeze()
+                xyz = xyz.squeeze(0)
                 
                 # print(batch_ind)
                 # print(xyz_np.shape)
@@ -252,41 +311,79 @@ def learn_mask(config):
                 # forward + backward + optimize
                 #img = torch.zeros((batch_size_gen,1,500,500)).type(torch.FloatTensor).to(device)
                 optimizer.zero_grad()
-                outputs = cnn(mask_param,xyz_np,Nphotons)
+                outputs = cnn(mask_param,xyz)
+                # get the phase mask from model
                 #return targets
-                loss = criterion(outputs,targets)
+                loss = criterion(outputs, targets)
+                loss_tv = tv_loss_module(mask_param)
+                total_loss = loss + loss_tv
                 
-                loss.backward(retain_graph=True)
-                optimizer.step()
-                #return loss
-                
+                total_loss.backward(retain_graph=True)
+                optimizer.step() 
+                """
+                # --- Add this section to inspect gradients ---
+                if mask_param.grad is not None:
+                    print(f"Epoch {epoch+1}, Batch {batch_index+1}:")
+                    print(f"  mask_param grad min: {mask_param.grad.min().item():.6f}")
+                    print(f"  mask_param grad max: {mask_param.grad.max().item():.6f}")
+                    print(f"  mask_param grad mean: {mask_param.grad.mean().item():.6f}")
+                    print(f"  mask_param grad std: {mask_param.grad.std().item():.6f}")
+                    # Optionally, check if all gradients are extremely small
+                    if torch.allclose(mask_param.grad, torch.zeros_like(mask_param.grad), atol=1e-8):
+                        print("  Warning: All mask_param gradients are very close to zero!")
+                else:
+                    print(f"Epoch {epoch+1}, Batch {batch_index+1}: mask_param.grad is None. This indicates a detached tensor or no gradient flow.")
+                # --- End of gradient inspection section ---
+                """
                 # running statistics
-                train_loss += loss.item()
-                jacc_ind = jaccard_coeff(outputs,targets)
-                train_jacc += jacc_ind.item()
+                train_loss += total_loss.item()
+                #jacc_ind = jaccard_coeff(outputs,targets)
+                #train_jacc += jacc_ind.item()
                 
                 # print training loss
-                #print('Epoch [%d/%d], Iter [%d/%d], Loss: %.4f\n' % (epoch+1,
-                #      num_epochs, batch_ind+1, steps_per_epoch, loss.item()))
+                print('Epoch [%d/%d], Iter [%d/%d], Loss: %.4f\n' % (epoch+1,
+                      num_epochs, batch_index+1, steps_per_epoch, loss.item()))
                 
-                if batch_ind % 1000 == 0:
-                    savePhaseMask(mask_param,batch_ind,epoch,res_dir)
-                
+                #if batch_ind % 1000 == 0:
+                #    savePhaseMask(mask_param,batch_ind,epoch,res_dir)       
         train_losses.append(train_loss)
-        np.savetxt('train_losses.txt',train_losses,delimiter=',')
-        if epoch % 10 == 0:
-            torch.save(cnn.state_dict(),res_dir + '/net_{}.pt'.format(epoch))
-        
+        np.savetxt(os.path.join(res_dir,'train_losses.txt'),train_losses,delimiter=',')
+        if epoch % 5 == 0 or epoch == 0:
+            torch.save(cnn.state_dict(),os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
+        save_png(mask_param.detach(), res_dir, str(epoch).zfill(3), config)
+       #save_png(mask_param, res_dir, str(epoch).zfill(3), config)
+        savePhaseMask(mask_param, batch_index, epoch, res_dir)
+    torch.save(cnn.state_dict(), os.path.join(res_dir, 'net_{}.pt'.format(epoch)))
     return labels
 
 if __name__ == '__main__':
 
+    
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
+    
+    config = load_config("config.yaml")
+    #z_range_cost_function = config['z_range_cost_function']
+    z_coupled_ratio = config.get('z_coupled_ratio',0)
+    z_coupled_spacing_range = config.get('z_coupled_spacing_range',(0,0))
+    num_classes = config['num_classes']
+   
+    #assert (z_range_cost_function[1]-z_range_cost_function[0]+1) == 1, "we haven't set up multi img output prediction yet" 
+    if num_classes > 1:
+        assert z_coupled_ratio > 0 and z_coupled_spacing_range[0] > 0, "z_coupled_ratio and z_coupled_spacing_range should be set for multi class imgs"
+    
+    config['device'] = device
+    
+    # Set the random seed
+    random_seed = config['random_seed']
+    torch.manual_seed(random_seed)
+    np.random.seed(random_seed)
+    random.seed(random_seed) # ryan added for gen data
+    
+    """
     config = {
         #How many bead cases per epoch
         "device": device, #Same GPU for all
-        "ntrain": 1000, #default 10000
+        "ntrain": 1000, #default 10000 how many images per epoch
         "nvalid": 100, #default 1000
         "batch_size_gen": 2, #default 2
         # Number of emitters per image
@@ -322,28 +419,37 @@ if __name__ == '__main__':
         "learning_rate_scheduler_patience_min_lr": 1e-6,
         "max_intensity": 5e4,
         #In case that the network needs to downsample the image, GPU memory issues
-        "ratio_input_output_image_size": 1, # defualt with Unet 1, with ResNet 4
+        "ratio_input_output_image_size": 4, # defualt with Unet 1, with ResNet 4
         #How many planes to consider as right classification, besides the plane
         # in focus, if 1 the -1, in focus, and +1 plane will be considered correct
         #if 0, only the infocus plane is considered, default value 1
         "z_range_cost_function": 1,
-        "use_unet": True,
+        "use_unet": False,
         "num_classes": 1
     }
+    """
+    
 
-    #Generate the data for the training
-    gen_data(config)
+    
+    # set results folder
+    model_name = f"phase_model_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    res_dir = os.path.join('training_results', model_name)
+    makedirs(res_dir)
+    
+    # Generate the data for the training
+    gen_data(config,res_dir)
     # pre generate defocus beads - can only run once
-    beads_img(config)
-    #learn the mask
-    learn_mask(config)
-    
+    if not os.path.isdir(config['data_path']):
+        beads_img(config)
+    # learn the mask
+    learn_mask(config,res_dir)
 
 
-    
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
+
